@@ -87,7 +87,29 @@
       "bulls": 0,
       "triples": 0,
       "doubles": 3
+    },
+    "Игрок 1": {
+      "games": 1,
+      "wins": 1,
+      "total_points": 0,
+      "total_throws": 0,
+      "best_round_ever": 0,
+      "best_single_ever": 0,
+      "bulls": 0,
+      "triples": 0,
+      "doubles": 0
+    },
+    "Игрок 2": {
+      "games": 1,
+      "wins": 1,
+      "total_points": 0,
+      "total_throws": 0,
+      "best_round_ever": 0,
+      "best_single_ever": 0,
+      "bulls": 0,
+      "triples": 0,
+      "doubles": 0
     }
   },
-  "games_played": 5
+  "games_played": 6
 }

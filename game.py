@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 game.py — «мозг» игры: очередность ходов, начисление очков, режимы,
-undo/skip, определение победителя. Не знает ничего про pygame-рисование
-(за исключением того, что хранит координаты точек попаданий для отрисовки
-на мишени) — вся отрисовка в ui.py / main.py.
+undo/skip, определение победителя. Не зависит от pygame напрямую —
+только хранит координаты попаданий и управляет состоянием.
 """
 
 import config as C
@@ -13,15 +12,10 @@ from upgrades import roll_upgrade
 
 class GameManager:
     def __init__(self, mode, player_names, team_of=None, dartboard=None):
-        """
-        mode: одна из config.MODE_*
-        player_names: список имён игроков по порядку хода
-        team_of: список int (0/1) той же длины, что player_names, для режима "teams"; иначе None
-        """
         self.mode = mode
         self.info = C.MODE_INFO[mode]
-        self.rounds_total = self.info["rounds"]
-        self.teams_mode = self.info["teams"]
+        self.rounds_total = self.info.get("rounds", 0)
+        self.teams_mode = self.info.get("teams", False)
         self.dartboard = dartboard
 
         self.players = []
@@ -29,7 +23,12 @@ class GameManager:
             team = team_of[i] if team_of else None
             color = C.TEAM_COLORS[team] if (self.teams_mode and team is not None) \
                 else C.PLAYER_COLORS[i % len(C.PLAYER_COLORS)]
-            self.players.append(Player(name, color, team=team, index=i))
+            p = Player(name, color, team=team, index=i)
+            if mode == C.MODE_501:
+                p.remaining_score = 501
+                p.starting_score = 501
+                p.total_score = 501   # в UI будем показывать remaining_score
+            self.players.append(p)
 
         self.turn_order = self._build_turn_order()
         self.turn_pointer = 0
@@ -41,7 +40,7 @@ class GameManager:
         self.undo_stack = []
         self.last_hits = []          # [(pos, color), ...] точки текущего хода
         self.floating_texts = []     # [(text, player), ...] для короткой анимации
-        self.awaiting_upgrade = False  # True пока не применили улучшение и не начали ход
+        self.awaiting_upgrade = False
 
         self._start_turn(first=True)
 
@@ -69,7 +68,9 @@ class GameManager:
 
     @property
     def darts_per_turn_base(self):
-        return C.darts_for_round(self.mode, self.round_no)
+        if self.mode == C.MODE_SPRINT6:
+            return C.darts_for_round(self.mode, self.round_no)
+        return C.DARTS_PER_TURN_DEFAULT
 
     # ------------------------------------------------------------------
     def _start_turn(self, first=False):
@@ -81,13 +82,12 @@ class GameManager:
         p.darts_total_this_turn = p.darts_remaining
         p.turn_multiplier = p.perm_multiplier
         p.miss_floor = p.perm_miss_floor
-        p.single_bonus = 0              # сбрасываем бонус за сингл
+        p.single_bonus = 0
         p.current_round_points = 0
         self.last_hits = []
 
-        # пассивный доход очков от постоянных улучшений — начисляется
-        # автоматически в начале каждого хода, до самих бросков
-        if p.perm_flat_per_turn:
+        # пассивный доход очков (только для обычных режимов, не для 501)
+        if p.perm_flat_per_turn and self.mode != C.MODE_501:
             p.total_score += p.perm_flat_per_turn
             p.current_round_points += p.perm_flat_per_turn
             self.floating_texts.append((f"+{p.perm_flat_per_turn}", p))
@@ -98,7 +98,6 @@ class GameManager:
             self.awaiting_upgrade = False
 
     def roll_upgrade_for_current(self):
-        """Вызывается UI перед началом хода в режиме 'С улучшениями'."""
         return roll_upgrade(self.round_no, self.rounds_total)
 
     def apply_upgrade(self, upgrade):
@@ -107,8 +106,6 @@ class GameManager:
         upgrade.apply(self, p)
         p.upgrades_collected.append((upgrade.name, upgrade.duration))
 
-        # постоянные улучшения могли поднять perm_multiplier/perm_miss_floor/доход —
-        # применяем их сразу к текущему ходу, т.к. игрок ещё не бросал дротики
         if upgrade.duration == "permanent":
             p.turn_multiplier = p.perm_multiplier
             p.miss_floor = max(p.miss_floor, p.perm_miss_floor)
@@ -118,8 +115,6 @@ class GameManager:
                 p.current_round_points += income_delta
                 self.floating_texts.append((f"+{income_delta}", p))
 
-        # применение улучшения могло изменить extra_darts_bonus/perm_extra_darts —
-        # пересчитаем итоговое число дротиков на этот ход
         base = self.darts_per_turn_base + p.perm_extra_darts + p.extra_darts_bonus
         p.darts_remaining = max(1, base)
         p.extra_darts_bonus = 0
@@ -161,7 +156,6 @@ class GameManager:
 
     # ------------------------------------------------------------------
     def throw(self, pos):
-        """Бросок дротика мышкой по координате pos на мишени."""
         if self.game_over or self.awaiting_upgrade or not self.dartboard:
             return None
         p = self.current_player
@@ -171,31 +165,88 @@ class GameManager:
         hit = self.dartboard.hit_test(pos)
         self._push_undo()
 
-        points = hit.points
-        if hit.ring == "miss" and p.miss_floor > 0:
-            points = p.miss_floor
-        # применяем одноразовый бонус за сингл
-        if hit.ring == "single" and getattr(p, 'single_bonus', 0) > 0:
-            points += p.single_bonus
-            p.single_bonus = 0
-        points = int(round(points * p.turn_multiplier))
-
-        p.total_score += points
-        p.current_round_points += points
-        p.register_throw(points, hit.ring)
-        p.darts_remaining -= 1
-        self.last_hits.append((pos, p.color))
-
-        if points != hit.points:
-            self.floating_texts.append((f"+{points}", p))
+        if self.mode == C.MODE_CRICKET:
+            self._handle_cricket_throw(p, hit, pos)
+        elif self.mode == C.MODE_501:
+            self._handle_501_throw(p, hit, pos)
+        else:
+            points = hit.points
+            if hit.ring == "miss" and p.miss_floor > 0:
+                points = p.miss_floor
+            if hit.ring == "single" and p.single_bonus > 0:
+                points += p.single_bonus
+                p.single_bonus = 0
+            points = int(round(points * p.turn_multiplier))
+            p.total_score += points
+            p.current_round_points += points
+            p.register_throw(points, hit.ring)
+            p.darts_remaining -= 1
+            self.last_hits.append((pos, p.color))
+            if points != hit.points:
+                self.floating_texts.append((f"+{points}", p))
 
         if p.darts_remaining <= 0:
             self._end_turn()
 
         return hit
 
+    def _handle_cricket_throw(self, player, hit, pos):
+        value = hit.value
+        ring = hit.ring
+        if ring in ("single", "double", "triple") and value in (15, 16, 17, 18, 19, 20):
+            marks = 1 if ring == "single" else 2 if ring == "double" else 3
+            self._add_cricket_marks(player, value, marks, hit.points)
+        elif ring in ("bull", "outer_bull"):
+            marks = 1 if ring == "outer_bull" else 2
+            self._add_cricket_marks(player, 25, marks, hit.points)
+        else:
+            # промах или незачётное число — без эффекта
+            pass
+
+        player.register_throw(hit.points, ring)
+        player.darts_remaining -= 1
+        self.last_hits.append((pos, player.color))
+
+    def _add_cricket_marks(self, player, number, marks, points):
+        if not player.cricket_closed[number]:
+            player.cricket_marks[number] += marks
+            if player.cricket_marks[number] >= 3:
+                player.cricket_marks[number] = 3
+                player.cricket_closed[number] = True
+        else:
+            # число уже закрыто данным игроком — начисляем очки
+            player.total_score += points
+            player.current_round_points += points
+            self.floating_texts.append((f"+{points}", player))
+
+    def _handle_501_throw(self, player, hit, pos):
+        points = hit.points
+        if hit.ring == "miss" and player.miss_floor > 0:
+            points = player.miss_floor
+        if hit.ring == "single" and player.single_bonus > 0:
+            points += player.single_bonus
+            player.single_bonus = 0
+
+        player.remaining_score -= points
+        if player.remaining_score < 0:
+            # перебор — ход сгорает, отменяем вычитание
+            player.remaining_score += points
+            self.floating_texts.append(("Перебор!", player))
+        elif player.remaining_score == 0:
+            player.register_throw(points, hit.ring)
+            player.darts_remaining -= 1
+            self.last_hits.append((pos, player.color))
+            self._finish_game()
+            return
+        else:
+            player.register_throw(points, hit.ring)
+            player.darts_remaining -= 1
+            self.last_hits.append((pos, player.color))
+
+        # Обновляем total_score для UI (показываем remaining)
+        player.total_score = player.remaining_score
+
     def skip_turn(self):
-        """Пропустить оставшиеся дротики текущего хода без начисления очков."""
         if self.game_over or self.awaiting_upgrade:
             return
         self._push_undo()
@@ -210,7 +261,13 @@ class GameManager:
         if self.turn_pointer >= len(self.turn_order):
             self.turn_pointer = 0
             self.round_no += 1
-            if self.round_no > self.rounds_total:
+            if self.mode == C.MODE_CRICKET and self.round_no > self.rounds_total:
+                self._finish_game()
+                return
+            elif self.mode == C.MODE_501 and self.round_no > self.rounds_total:
+                self._finish_game()
+                return
+            elif self.mode not in (C.MODE_CRICKET, C.MODE_501) and self.round_no > self.rounds_total:
                 self._finish_game()
                 return
         self._start_turn()
@@ -224,23 +281,40 @@ class GameManager:
             best = max(totals.values())
             self.winner_team = [t for t, v in totals.items() if v == best]
             self.winner_players = [p for p in self.players if p.team in self.winner_team]
+        elif self.mode == C.MODE_CRICKET:
+            # победитель: кто закрыл больше чисел, при равенстве больше очков
+            best_closed = max(sum(p.cricket_closed.values()) for p in self.players)
+            best_score = max(p.total_score for p in self.players
+                             if sum(p.cricket_closed.values()) == best_closed)
+            self.winner_players = [p for p in self.players
+                                   if sum(p.cricket_closed.values()) == best_closed
+                                   and p.total_score == best_score]
+        elif self.mode == C.MODE_501:
+            if any(p.remaining_score == 0 for p in self.players):
+                self.winner_players = [p for p in self.players if p.remaining_score == 0]
+            else:
+                min_remaining = min(p.remaining_score for p in self.players)
+                self.winner_players = [p for p in self.players if p.remaining_score == min_remaining]
         else:
             best = max(p.total_score for p in self.players)
             self.winner_players = [p for p in self.players if p.total_score == best]
 
     # ------------------------------------------------------------------
     def team_totals(self):
-        """dict: team_index -> суммарный счёт (только для teams_mode)."""
         totals = {}
         for p in self.players:
             totals[p.team] = totals.get(p.team, 0) + p.total_score
         return totals
 
     def players_sorted(self):
+        if self.mode == C.MODE_CRICKET:
+            return sorted(self.players,
+                          key=lambda p: (-sum(p.cricket_closed.values()), -p.total_score))
+        elif self.mode == C.MODE_501:
+            return sorted(self.players, key=lambda p: p.remaining_score)
         return sorted(self.players, key=lambda p: p.total_score, reverse=True)
 
     def darts_thrown_progress(self):
-        """(брошено, всего) дротиков в текущем ходе — для UI."""
         p = self.current_player
         total = max(p.darts_total_this_turn, 1)
         thrown = total - p.darts_remaining

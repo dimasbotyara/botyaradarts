@@ -3,36 +3,34 @@
 player.py — модель игрока и его статистики в рамках одной партии.
 """
 
-
 class Player:
     def __init__(self, name, color, team=None, index=0):
         self.name = name
         self.color = color
-        self.team = team          # None или индекс команды (0/1)
+        self.team = team
         self.index = index
 
         self.total_score = 0
-        self.round_scores = []    # список очков за каждый завершённый раунд
+        self.round_scores = []
         self.current_round_points = 0
 
-        # состояние текущего хода (сбрасывается после хода)
+        # Состояние текущего хода
         self.darts_remaining = 0
-        self.darts_total_this_turn = 0  # сколько дротиков положено в этом ходе (для UI)
-        self.turn_multiplier = 1        # эффект улучшений: множитель очков за ход
-        self.extra_darts_bonus = 0      # эффект улучшений: доп. дротики
-        self.miss_floor = 0             # эффект улучшений: промах засчитывается как N очков
-        self.single_bonus = 0           # бонус к очкам за следующее попадание в сингл (одноразовый)
+        self.darts_total_this_turn = 0
+        self.turn_multiplier = 1
+        self.extra_darts_bonus = 0
+        self.miss_floor = 0
+        self.single_bonus = 0
 
-        # ПОСТОЯННЫЕ (пассивные) эффекты — действуют до конца всей партии,
-        # накапливаются при выпадении улучшений с duration="permanent"
-        self.perm_multiplier = 1.0      # постоянный множитель очков (стакается умножением)
-        self.perm_extra_darts = 0       # доп. дротики каждый ход до конца игры
-        self.perm_flat_per_turn = 0     # пассивный доход очков в начале каждого хода
-        self.perm_miss_floor = 0        # промахи навсегда считаются как минимум N очков
-        self.perm_shield = 0.0          # доля (0..0.9) снижения урона от краж/атак соперников
-        self.pending_dart_penalty = 0   # временный "минус дротик" от чужой диверсии (на след. ход)
+        # Постоянные эффекты
+        self.perm_multiplier = 1.0
+        self.perm_extra_darts = 0
+        self.perm_flat_per_turn = 0
+        self.perm_miss_floor = 0
+        self.perm_shield = 0.0
+        self.pending_dart_penalty = 0
 
-        # статистика на партию
+        # Статистика
         self.throws_count = 0
         self.miss_count = 0
         self.single_count = 0
@@ -42,7 +40,15 @@ class Player:
         self.outer_bull_count = 0
         self.best_single_throw = 0
         self.best_round = 0
-        self.upgrades_collected = []    # список (name, duration) — для истории партии
+        self.upgrades_collected = []
+
+        # Специфичные для крикета
+        self.cricket_marks = {num: 0 for num in [15, 16, 17, 18, 19, 20, 25]}  # 25 = булл
+        self.cricket_closed = {num: False for num in [15, 16, 17, 18, 19, 20, 25]}
+
+        # Специфичные для 501
+        self.remaining_score = 501  # или 301, можно будет менять
+        self.starting_score = 501
 
     def register_throw(self, hit_points, ring):
         self.throws_count += 1
@@ -81,7 +87,6 @@ class Player:
         return 100.0 * hits / self.throws_count
 
     def snapshot(self):
-        """Лёгкий словарь-снимок для undo (без ссылок на изменяемые вложенные списки)."""
         return {
             "total_score": self.total_score,
             "round_scores": list(self.round_scores),
@@ -91,7 +96,7 @@ class Player:
             "turn_multiplier": self.turn_multiplier,
             "extra_darts_bonus": self.extra_darts_bonus,
             "miss_floor": self.miss_floor,
-            "single_bonus": self.single_bonus,   # новое поле
+            "single_bonus": self.single_bonus,
             "perm_multiplier": self.perm_multiplier,
             "perm_extra_darts": self.perm_extra_darts,
             "perm_flat_per_turn": self.perm_flat_per_turn,
@@ -108,6 +113,9 @@ class Player:
             "best_single_throw": self.best_single_throw,
             "best_round": self.best_round,
             "upgrades_collected": list(self.upgrades_collected),
+            "cricket_marks": dict(self.cricket_marks),
+            "cricket_closed": dict(self.cricket_closed),
+            "remaining_score": self.remaining_score,
         }
 
     def restore(self, snap):
@@ -119,7 +127,7 @@ class Player:
         self.turn_multiplier = snap["turn_multiplier"]
         self.extra_darts_bonus = snap["extra_darts_bonus"]
         self.miss_floor = snap.get("miss_floor", 0)
-        self.single_bonus = snap.get("single_bonus", 0)   # новое поле
+        self.single_bonus = snap.get("single_bonus", 0)
         self.perm_multiplier = snap.get("perm_multiplier", 1.0)
         self.perm_extra_darts = snap.get("perm_extra_darts", 0)
         self.perm_flat_per_turn = snap.get("perm_flat_per_turn", 0)
@@ -136,3 +144,6 @@ class Player:
         self.best_single_throw = snap["best_single_throw"]
         self.best_round = snap["best_round"]
         self.upgrades_collected = list(snap["upgrades_collected"])
+        self.cricket_marks = dict(snap.get("cricket_marks", {num: 0 for num in [15,16,17,18,19,20,25]}))
+        self.cricket_closed = dict(snap.get("cricket_closed", {num: False for num in [15,16,17,18,19,20,25]}))
+        self.remaining_score = snap.get("remaining_score", self.remaining_score)

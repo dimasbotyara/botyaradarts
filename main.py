@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 main.py — точка входа. Управляет окном, экранами (меню -> настройка ->
-игра -> итоги) и связывает вместе dartboard.py, game.py, ui.py, upgrades.py,
-stats_storage.py.
+игра -> итоги -> настройки) и связывает вместе dartboard.py, game.py, ui.py,
+upgrades.py, stats_storage.py.
 
 Запуск:
     python3 main.py
@@ -30,6 +30,7 @@ STATE_SETUP = "setup"
 STATE_GAME = "game"
 STATE_END = "end"
 STATE_LEADERBOARD = "leaderboard"
+STATE_SETTINGS = "settings"
 
 
 def pick_font_name():
@@ -50,6 +51,11 @@ class App:
         self.clock = pygame.time.Clock()
         self.fullscreen = False
         self.running = True
+
+        # Применяем сохранённые темы (интерфейс и мишень)
+        ui_theme, board_theme = C.load_settings()
+        C.apply_ui_theme(ui_theme)
+        C.apply_board_theme(board_theme)
 
         self.font_name = pick_font_name()
         self.fonts = {}
@@ -113,15 +119,12 @@ class App:
         margin = int(h * 0.025)
 
         board_rect = pygame.Rect(margin, margin, board_w - margin * 2, h - margin * 2)
-        # квадратизируем и центрируем по вертикали
         side = min(board_rect.width, board_rect.height)
         board_rect = pygame.Rect(0, 0, side, side)
         board_rect.center = (margin + (board_w - margin * 2) // 2, h // 2)
 
         right_x = board_w
         right_w = w - board_w - margin
-        # Увеличиваем высоту панели игрока, уменьшаем высоту таблицы счёта,
-        # чтобы всё помещалось и смотрелось сбалансированно.
         player_panel = pygame.Rect(right_x, margin, right_w, int(h * 0.46))
         scoreboard = pygame.Rect(right_x, player_panel.bottom + margin,
                                   right_w, int(h * 0.32))
@@ -195,12 +198,21 @@ class App:
 
             self.buttons[f"mode_{mode_key}"] = rect
 
-        # кнопка статистики
+        # Кнопка статистики (правая верхняя)
         lb_rect = pygame.Rect(w - int(w * 0.22) - pad, int(h * 0.02), int(w * 0.22), int(h * 0.05))
         ui.draw_panel(self.screen, lb_rect, bg=C.PANEL_BG_LIGHT, border=C.ACCENT_2)
         lb_txt = emoji_render.rtext(self.fonts["small"], "📊 Статистика игроков", C.ACCENT_2)
         self.screen.blit(lb_txt, lb_txt.get_rect(center=lb_rect.center))
         self.buttons["leaderboard"] = lb_rect
+
+        # Кнопка настроек (левее статистики)
+        settings_rect = pygame.Rect(lb_rect.left - int(w * 0.22) - 10, int(h * 0.02),
+                                    int(w * 0.22), int(h * 0.05))
+        ui.draw_panel(self.screen, settings_rect, bg=C.PANEL_BG_LIGHT, border=C.ACCENT)
+        settings_txt = emoji_render.rtext(self.fonts["small"], "⚙️ Настройки", C.ACCENT)
+        self.screen.blit(settings_txt, settings_txt.get_rect(center=settings_rect.center))
+        self.buttons["settings"] = settings_rect
+
         self.fx.draw_ripples(self.screen)
 
     def _handle_menu_click(self, pos):
@@ -211,7 +223,10 @@ class App:
                     self.leaderboard_rows = stats_storage.leaderboard()
                     self.state = STATE_LEADERBOARD
                     return
-                if key.startswith("mode_"):
+                elif key == "settings":
+                    self.state = STATE_SETTINGS
+                    return
+                elif key.startswith("mode_"):
                     self.mode = key[len("mode_"):]
                     info = C.MODE_INFO[self.mode]
                     self.setup_player_count = info["min_players"]
@@ -449,7 +464,6 @@ class App:
                 if hit is not None:
                     self.fx.on_hit(pos, hit, thrower.color)
                     if len(thrower.round_scores) > rounds_before:
-                        # ход только что завершился — проверим, не суперсильный ли он
                         self.fx.on_big_turn(pos, thrower.round_scores[-1])
                 layout = self._compute_layout()
                 self._spawn_floats_from_game(layout)
@@ -602,6 +616,126 @@ class App:
                 self.state = STATE_MENU
 
     # ------------------------------------------------------------------
+    # SETTINGS
+    # ------------------------------------------------------------------
+    def _draw_settings(self):
+        self._draw_background()
+        w, h = self.screen.get_width(), self.screen.get_height()
+        title = emoji_render.rtext(self.fonts["title"], "⚙️ Настройки", C.ACCENT)
+        self.screen.blit(title, title.get_rect(center=(w // 2, int(h * 0.10))))
+
+        # Панель с настройками
+        panel = pygame.Rect(int(w * 0.1), int(h * 0.18), int(w * 0.8), int(h * 0.70))
+        ui.draw_panel(self.screen, panel)
+
+        pad = 24
+        y = panel.top + pad
+
+        # ======= ТЕМА ИНТЕРФЕЙСА =======
+        label_ui = self.fonts["large"].render("Тема интерфейса", True, C.TEXT_MAIN)
+        self.screen.blit(label_ui, (panel.left + pad, y))
+        y += label_ui.get_height() + 12
+
+        ui_names = list(C.UI_THEMES.keys())
+        cols = 3 if w > 1200 else 2 if w > 800 else 1
+        card_w = (panel.width - pad * (cols + 1)) // cols
+        card_h = 70
+        gap = 10
+        self.buttons.clear()
+        for i, theme_key in enumerate(ui_names):
+            col = i % cols
+            row = i // cols
+            x = panel.left + pad + col * (card_w + gap)
+            cy = y + row * (card_h + gap)
+            rect = pygame.Rect(x, cy, card_w, card_h)
+            theme = C.UI_THEMES[theme_key]
+            is_current = (C.CURRENT_UI_THEME_NAME == theme_key)
+            border = C.ACCENT if is_current else C.PANEL_BORDER
+            bg = C.PANEL_BG_LIGHT if is_current else C.PANEL_BG
+            ui.draw_panel(self.screen, rect, bg=bg, border=border)
+            name_txt = self.fonts["small"].render(theme["name"], True, C.TEXT_MAIN)
+            self.screen.blit(name_txt, (rect.left + 12, rect.top + 8))
+            colors = [theme["bg_top"], theme["panel_bg"], theme["accent"], theme["text_main"]]
+            sw = 18
+            sx = rect.left + 12
+            sy = rect.bottom - 26
+            for c in colors:
+                pygame.draw.rect(self.screen, c, (sx, sy, sw, sw), border_radius=4)
+                sx += sw + 4
+            if is_current:
+                check = self.fonts["small"].render("✓", True, C.ACCENT)
+                self.screen.blit(check, check.get_rect(topright=(rect.right - 10, rect.top + 6)))
+            self.buttons[f"ui_theme_{theme_key}"] = rect
+
+        y += ((len(ui_names) + cols - 1) // cols) * (card_h + gap) + 20
+
+        # ======= ТЕМА МИШЕНИ =======
+        label_board = self.fonts["large"].render("Тема мишени", True, C.TEXT_MAIN)
+        self.screen.blit(label_board, (panel.left + pad, y))
+        y += label_board.get_height() + 12
+
+        board_names = list(C.BOARD_THEMES.keys())
+        for i, theme_key in enumerate(board_names):
+            col = i % cols
+            row = i // cols
+            x = panel.left + pad + col * (card_w + gap)
+            cy = y + row * (card_h + gap)
+            rect = pygame.Rect(x, cy, card_w, card_h)
+            theme = C.BOARD_THEMES[theme_key]
+            is_current = (C.CURRENT_BOARD_THEME_NAME == theme_key)
+            border = C.ACCENT if is_current else C.PANEL_BORDER
+            bg = C.PANEL_BG_LIGHT if is_current else C.PANEL_BG
+            ui.draw_panel(self.screen, rect, bg=bg, border=border)
+            name_txt = self.fonts["small"].render(theme["name"], True, C.TEXT_MAIN)
+            self.screen.blit(name_txt, (rect.left + 12, rect.top + 8))
+            colors = [theme["board_black"], theme["board_cream"], theme["board_red"], theme["board_green"]]
+            sw = 18
+            sx = rect.left + 12
+            sy = rect.bottom - 26
+            for c in colors:
+                pygame.draw.rect(self.screen, c, (sx, sy, sw, sw), border_radius=4)
+                sx += sw + 4
+            if is_current:
+                check = self.fonts["small"].render("✓", True, C.ACCENT)
+                self.screen.blit(check, check.get_rect(topright=(rect.right - 10, rect.top + 6)))
+            self.buttons[f"board_theme_{theme_key}"] = rect
+
+        # Место под будущие настройки
+        future_y = panel.bottom - pad - 60
+        future_label = self.fonts["small"].render("Другие настройки появятся позже…", True, C.TEXT_DIM2)
+        self.screen.blit(future_label, (panel.left + pad, future_y))
+
+        # Кнопка назад
+        back_rect = pygame.Rect(w // 2 - 100, panel.bottom + 24, 200, 54)
+        ui.Button(back_rect, "⬅️ Назад", self.fonts["medium_bold"], style="ghost").draw(self.screen)
+        self.buttons["back"] = back_rect
+
+        self.fx.draw_ripples(self.screen)
+
+    def _handle_settings_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = event.pos
+            for key, rect in self.buttons.items():
+                if rect.collidepoint(pos):
+                    if key == "back":
+                        self.fx.on_button_click(pos, C.ACCENT_2)
+                        self.state = STATE_MENU
+                    elif key.startswith("ui_theme_"):
+                        theme_name = key[9:]  # len("ui_theme_") == 9
+                        self.fx.on_button_click(pos, C.ACCENT)
+                        C.apply_ui_theme(theme_name)
+                        C.save_settings(C.CURRENT_UI_THEME_NAME, C.CURRENT_BOARD_THEME_NAME)
+                        self._layout_dirty = True
+                    elif key.startswith("board_theme_"):
+                        theme_name = key[12:]  # len("board_theme_") == 12
+                        self.fx.on_button_click(pos, C.ACCENT)
+                        C.apply_board_theme(theme_name)
+                        C.save_settings(C.CURRENT_UI_THEME_NAME, C.CURRENT_BOARD_THEME_NAME)
+                        if self.dartboard:
+                            self.dartboard._surface_cache = None
+                    return
+
+    # ------------------------------------------------------------------
     def _draw_background(self):
         w, h = self.screen.get_width(), self.screen.get_height()
         ui.draw_vertical_gradient(self.screen, (0, 0, w, h), C.BG_TOP, C.BG_BOTTOM)
@@ -640,6 +774,8 @@ class App:
                     self._handle_end_event(event)
                 elif self.state == STATE_LEADERBOARD:
                     self._handle_leaderboard_event(event)
+                elif self.state == STATE_SETTINGS:
+                    self._handle_settings_event(event)
 
             for ti in self.setup_inputs:
                 ti.update(dt)
@@ -656,6 +792,8 @@ class App:
                 self._draw_end()
             elif self.state == STATE_LEADERBOARD:
                 self._draw_leaderboard()
+            elif self.state == STATE_SETTINGS:
+                self._draw_settings()
 
             pygame.display.flip()
 
