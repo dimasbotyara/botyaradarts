@@ -1,9 +1,6 @@
 # -*- coding: utf-8 -*-
 """
 dartboard.py — отрисовка мишени и определение результата клика мышкой.
-
-Мишень строится геометрически (без картинок), поэтому отлично
-масштабируется на любое разрешение — хоть на весь телевизор.
 """
 
 import math
@@ -12,7 +9,6 @@ import config as C
 
 
 class HitResult:
-    """Результат попадания дротика."""
     __slots__ = ("value", "multiplier", "points", "label", "ring")
 
     def __init__(self, value, multiplier, label, ring):
@@ -27,12 +23,6 @@ class HitResult:
 
 
 class Dartboard:
-    """
-    Мишень, вписанная в квадрат rect (pygame.Rect).
-    Все геометрические расчёты идут от центра и радиуса = min(w,h)/2 * 0.94
-    (немного отступа под обод/подпись).
-    """
-
     def __init__(self, rect: pygame.Rect):
         self.set_rect(rect)
         self._surface_cache = None
@@ -60,7 +50,12 @@ class Dartboard:
 
         angle = math.degrees(math.atan2(dx, -dy))
         angle = (angle + 360) % 360
-        angle = (angle + 90) % 360
+
+        # Учитываем поворот мишени
+        if C.BOARD_ROTATION == "6_top":
+            angle = (angle + 90) % 360
+        # если "20_top" — ничего не добавляем
+
         sector_index = int(((angle + 9) % 360) // 18)
         value = C.SECTOR_ORDER[sector_index]
 
@@ -96,28 +91,29 @@ class Dartboard:
         cy = self.rect.height // 2
         R = self.radius
 
-        # Внешний деревянный обод
+        # Начальный угол в зависимости от поворота
+        if C.BOARD_ROTATION == "6_top":
+            offset_deg = -90
+        else:
+            offset_deg = 0
+
         pygame.draw.circle(surf, C.BOARD_RIM, (cx, cy), int(R * 1.09))
         pygame.draw.circle(surf, C.BOARD_OUT, (cx, cy), int(R * C.R_DOUBLE_OUT) + 4)
 
-        # Сектора
         n = len(C.SECTOR_ORDER)
         for i, value in enumerate(C.SECTOR_ORDER):
-            start_deg = -90 + i * 18 - 9
+            start_deg = offset_deg + i * 18 - 9
             self._draw_sector_wedge(surf, cx, cy, R, start_deg, 18, i)
 
-        # Кольца-разделители
         for frac in (C.R_TRIPLE_IN, C.R_TRIPLE_OUT, C.R_DOUBLE_IN, C.R_DOUBLE_OUT):
             pygame.draw.circle(surf, C.BOARD_WIRE, (cx, cy), int(R * frac), 1)
 
-        # Бул (центр)
         pygame.draw.circle(surf, C.BOARD_YELLOW, (cx, cy), int(R * C.R_OUTER_BULL))
         pygame.draw.circle(surf, C.BOARD_BLACK, (cx, cy), int(R * C.R_BULL))
         pygame.draw.circle(surf, C.BOARD_WIRE, (cx, cy), int(R * C.R_OUTER_BULL), 1)
 
-        # Проволочные линии
         for i in range(n):
-            deg = -90 + i * 18 - 9
+            deg = offset_deg + i * 18 - 9
             rad = math.radians(deg)
             x2 = cx + math.sin(rad) * R * C.R_DOUBLE_OUT
             y2 = cy - math.cos(rad) * R * C.R_DOUBLE_OUT
@@ -125,19 +121,16 @@ class Dartboard:
             y1 = cy - math.cos(rad) * R * C.R_OUTER_BULL
             pygame.draw.line(surf, C.BOARD_WIRE, (x1, y1), (x2, y2), 1)
 
-        # Номера секторов с тенями
         font = pygame.font.SysFont(_pick_font(), max(14, int(R * 0.11)), bold=True)
         label_r = R * 1.02
         shadow_offset = 2
         for i, value in enumerate(C.SECTOR_ORDER):
-            deg = -90 + i * 18
+            deg = offset_deg + i * 18
             rad = math.radians(deg)
             lx = cx + math.sin(rad) * label_r
             ly = cy - math.cos(rad) * label_r
-            # Тень (чёрный, слегка смещённый)
             shadow = font.render(str(value), True, (0, 0, 0))
             surf.blit(shadow, shadow.get_rect(center=(lx + shadow_offset, ly + shadow_offset)))
-            # Основной текст
             text = font.render(str(value), True, C.TEXT_MAIN)
             surf.blit(text, text.get_rect(center=(lx, ly)))
 

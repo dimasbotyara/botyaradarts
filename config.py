@@ -48,6 +48,9 @@ PLAYER_COLORS = [
     (170, 255, 120), (255, 150, 60), (200, 140, 255), (120, 220, 220),
 ]
 
+# Поворот мишени: "6_top" или "20_top"
+BOARD_ROTATION = "6_top"   # по умолчанию как у тебя
+
 # ----------------------------------------------------------------------
 # ТЕМЫ ИНТЕРФЕЙСА
 # ----------------------------------------------------------------------
@@ -389,16 +392,21 @@ def load_settings():
                 data = json.load(f)
             ui = data.get("ui_theme", DEFAULT_UI_THEME)
             board = data.get("board_theme", DEFAULT_BOARD_THEME)
-            return ui, board
+            rotation = data.get("board_rotation", "6_top")
+            return ui, board, rotation
         except Exception:
-            return DEFAULT_UI_THEME, DEFAULT_BOARD_THEME
-    return DEFAULT_UI_THEME, DEFAULT_BOARD_THEME
+            return DEFAULT_UI_THEME, DEFAULT_BOARD_THEME, "6_top"
+    return DEFAULT_UI_THEME, DEFAULT_BOARD_THEME, "6_top"
 
-def save_settings(ui_theme, board_theme):
+def save_settings(ui_theme, board_theme, rotation="6_top"):
     settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "darts_settings.json")
     try:
         with open(settings_file, "w", encoding="utf-8") as f:
-            json.dump({"ui_theme": ui_theme, "board_theme": board_theme}, f, ensure_ascii=False, indent=2)
+            json.dump({
+                "ui_theme": ui_theme,
+                "board_theme": board_theme,
+                "board_rotation": rotation
+            }, f, ensure_ascii=False, indent=2)
     except Exception:
         pass
 

@@ -1,9 +1,10 @@
 .venv/
 venv/
 ENV/
-__pycache__/
+pycache/
 *.py[cod]
 *$py.class
 .pytest_cache/
 darts_stats.json
+darts_settings.json
 .DS_Store

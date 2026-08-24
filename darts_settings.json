@@ -1,4 +1,5 @@
 {
   "ui_theme": "custom_ui",
-  "board_theme": "wood"
+  "board_theme": "custom_board",
+  "board_rotation": "6_top"
 }

@@ -1,102 +1,93 @@
-# 🎯 Дартс — Домашний счёт
+# 🎯 Darts — Home Scoreboard
 
-Полноценное pygame-приложение для подсчёта очков в дартс с большим,
-"телевизорным" интерфейсом: подключаешь ноутбук к ТВ, разворачиваешь
-на весь экран (`F11`) — и играешь всей компанией, кликая мышкой по
-мишени вместо ввода очков с клавиатуры.
+A full-featured Pygame application for keeping score in darts with a large, "TV-friendly" interface. Connect your laptop to a TV, go fullscreen (`F11`), and play with friends by clicking on the dartboard instead of typing numbers manually.
 
-## Установка и запуск
+## Installation & Launch
 
 ```bash
 pip install -r requirements.txt
-python3 main.py
+python app.py
 ```
 
-Python 3.9+ и `pygame >= 2.1`. Pillow нужен для цветных эмодзи в интерфейсе
-(см. раздел «Эмодзи» ниже) — без него игра тоже прекрасно работает, просто
-эмодзи в текстах будут аккуратно убраны, а не показаны квадратиками.
+Requires Python 3.9+ and `pygame >= 2.1`. Pillow is needed for colored emoji in the UI (see the Emoji section below). Without it, the game still works fine — emoji will be neatly removed from texts instead of being shown as ugly square placeholders.
 
-## Управление
+## 🎮 Controls
 
-- **Клик мышкой по мишени** — бросок дротика (учитывается зона: одиночный
-  сектор, тройное кольцо (T), двойное кольцо (D), бул 25 и яблочко 50).
-- **F11** — полноэкранный режим (для проекции на ТВ).
-- **Esc** — выйти из полноэкранного режима / выйти из игры в главном меню.
-- Кнопки на экране: **Новая игра**, **Отменить** (undo — работает даже
-  после нескольких бросков подряд), **Пропустить** ход.
+- **Mouse click on the dartboard** — throw a dart (zones: single, triple, double, bull 25, bullseye 50).
+- **F11** — toggle fullscreen (great for TV projection).
+- **Esc** — exit fullscreen / quit from main menu.
+- On-screen buttons: **New Game**, **Undo** (works for multiple throws in a row), **Skip Turn**.
 
-## Режимы игры
+## 🎯 Game Modes
 
-| Режим | Правила |
+| Mode | Rules |
 |---|---|
-| **Обычный** | 2–8 игроков, 3 дротика за ход, 8 раундов. Побеждает набравший больше очков. |
-| **Дуэль** | Ровно 2 игрока, та же схема, но один на один. |
-| **Команды** | Две команды (2–8 игроков), ходят по очереди вперемешку, очки команды суммируются. |
-| **Спринт 6×6** | 6 раундов с нарастающей сложностью: раунды 1–2 — по 1 дротику за ход, 3–4 — по 2 дротика сразу, 5–6 — по 3 сразу. |
-| **С улучшениями** | 7 раундов. Перед каждым ходом — анимация слот-машины со случайным улучшением. Бывают **разовые** (действуют только этот ход: доп. дротики, x2/x3 очки, кража очков, саботаж соперника) и **постоянные** (действуют до конца всей партии: пассивный множитель очков, дротик каждый ход навсегда, пассивный доход очков в начале хода, щит от чужих атак и т.д.). Всего 30 разных улучшений (10 на каждый из 3 уровней), чем дальше раунд — тем чаще выпадают мощные. |
+| **Classic** | 2–8 players, 3 darts per turn, 8 rounds. Highest total score wins. |
+| **Teams** | Two teams (2–8 players), alternating turns, team scores are summed. |
+| **Sprint 6×6** | 6 rounds with progressive difficulty: rounds 1–2 — 1 dart per turn, 3–4 — 2 darts, 5–6 — 3 darts. |
+| **Upgrades** | 7 rounds. Before each turn, a slot-machine animation picks a random upgrade. Effects can be **temporary** (extra darts, score multipliers, stealing points, opponent sabotage) or **permanent** (passive multipliers, extra dart each turn, passive income, shield). 42 different upgrades across 3 tiers — the further into the game, the more powerful they become. |
+| **Cricket** | Close numbers 15–20 and the bull. Once closed, subsequent hits score points until opponents close them too. 15 rounds. |
+| **501** | Start at 501 and subtract points each dart. Bust (going below 0) cancels the turn. First to reach exactly 0 wins. 20 rounds. |
 
-Правила — «домашние», без официальных дротичных сложностей (double-out,
-checkout и т.п.): просто набираете очки и веселитесь.
+Rules are “home-style” — no complicated official finish rules (double-out, checkout). Just score points and have fun!
 
-## Статистика
+## 🎨 Themes & Customization
 
-После каждой партии результаты сохраняются в `darts_stats.json` рядом
-со скриптом. На главном экране есть кнопка **📊 Статистика игроков** —
-таблица лидеров по среднему очков за дротик, проценту побед, лучшему
-ходу и лучшему одиночному броску.
+The game supports **separate UI themes** and **dartboard themes**:
 
-## Эмодзи 🎯🔥
+- UI themes: custom (default), dark, light, Catppuccin Mocha/Latte, Dracula, Nord, Gruvbox Dark, Solarized Dark/Light, One Dark.
+- Board themes: custom, classic, inverted, neon, wood.
+- **Board rotation**: choose which sector is at the top — **6** or **20** (custom default: 6 on top).
 
-## Визуальные эффекты 🎆
+All settings are stored in `darts_settings.json` and can be changed in **Settings** (⚙️) from the main menu.
 
-При каждом попадании — взрыв частиц и пульсирующее кольцо в точке удара,
-цвет зависит от зоны (бул — красно-золотой, трипл — золотой, дабл —
-бирюзовый). На буллсай и трипл добавляется короткая вспышка экрана и
-всплывающий текст-коллаут ("БУЛ! 50", "TRIPLE 20!") с эффектом "попа"
-(быстро увеличивается и оседает). Если сумма очков за ход большая —
-выскакивает "🔥 МАКСИМАЛКА!" (от 150) или "⚡ ОГОНЬ!" (от 100), как
-183/180 в настоящем дартсе. На кнопках — лёгкая рябь при клике для
-тактильного отклика, у панели текущего игрока — мягкое пульсирующее
-свечение его цветом. На экране победы — конфетти цветов победителя.
+## 📊 Statistics
 
-Все эффекты — в отдельном модуле `fx.py`, ничего не завязано на логику
-игры, поэтому их легко подкрутить (сила частиц, длительность, пороги
-коллаутов) не трогая остальной код.
+After each game, results are saved to `darts_stats.json`. The main menu has a **📊 Player Statistics** button showing leaderboards by average points per dart, win rate, best round, and best single throw.
 
+## ✨ Visual Effects
 
-Сам pygame не умеет рисовать цветные эмодзи — по умолчанию получаются
-чёрно-белые "тофу"-квадратики. Поэтому в проекте есть `emoji_render.py`:
-он рендерит эмодзи через Pillow (используя системный цветной шрифт —
-например `NotoColorEmoji.ttf` на Linux/Android или `Apple Color Emoji`
-на macOS, `Segoe UI Emoji` на Windows) и подставляет их как цветные
-картинки прямо внутрь текста, вперемешку с обычными буквами.
+Each hit spawns particles and a pulsing ring at the impact point. Color depends on the zone (bull — red/gold, triple — gold, double — teal). Bullseye and triples add a screen flash and floating callouts ("BULL! 50", "TRIPLE 20!") with a pop animation. Big turns trigger special callouts: "🔥 MAXIMUM!" (150+ points) or "⚡ ON FIRE!" (100+). Buttons ripple on click, current player panel glows softly. Victory screen features confetti in winner colors.
 
-Если подходящий эмодзи-шрифт на компьютере не найден — модуль тихо
-переключается в безопасный режим и просто убирает эмодзи из текста,
-чтобы вместо них не было уродливых квадратиков. Игра при этом не падает
-и не требует специальной настройки — обнаружение полностью автоматическое.
+All effects live in `fx.py` — easy to tweak without touching game logic.
 
-## Структура проекта
+## 😀 Emoji Rendering
+
+Pygame itself cannot render colored emoji. The project includes `emoji_render.py` which uses Pillow and system color emoji fonts (e.g., `NotoColorEmoji.ttf` on Linux, `Apple Color Emoji` on macOS, `Segoe UI Emoji` on Windows) to display them properly. If no suitable font is found, it silently falls back to removing emoji from text — no crashes, no ugly squares.
+
+## 📁 Project Structure
 
 ```
-main.py            — точка входа, экраны (меню/настройка/игра/итоги), игровой цикл
-config.py           — все константы: цвета, размеры, правила режимов
-dartboard.py         — отрисовка мишени + определение результата клика
-player.py            — модель игрока и статистика партии
-game.py              — очередность ходов, начисление очков, undo, режимы, победитель
-upgrades.py           — улучшения и анимация слот-машины (режим "С улучшениями")
-fx.py                  — визуальные эффекты: частицы, вспышки, коллауты, конфетти, рябь
-emoji_render.py         — цветной рендер эмодзи через Pillow (с безопасным фоллбеком)
-ui.py                 — кнопки, текстовые поля, панели, таблица счёта
-stats_storage.py       — персистентная статистика между запусками (JSON)
+app.py               — main application class and game loop
+screens/             — menu, setup, game, end, leaderboard, settings screens
+config.py            — constants, themes, mode rules
+dartboard.py         — dartboard rendering and hit detection
+player.py            — player model and statistics
+game.py              — turn order, scoring, undo, game modes, winner
+upgrades.py          — upgrade definitions and slot-machine animation
+fx.py                — visual effects (particles, flashes, callouts, confetti)
+emoji_render.py      — colored emoji rendering via Pillow
+ui.py                — buttons, inputs, panels, scoreboard
+stats_storage.py     — persistent JSON statistics
 ```
 
-## Настройка под свой экран
+## 🖥️ Screen Customization
 
-В `config.py`:
-- `DEFAULT_WIDTH` / `DEFAULT_HEIGHT` — стартовое разрешение окна.
-- `BOARD_PANEL_RATIO` — доля экрана под мишень (по умолчанию 1/3 слева).
-- `MODE_INFO[...]["rounds"]` — количество раундов в любом режиме.
-- Цветовая палитра — блок `# ЦВЕТА` в начале файла.
+In `config.py` (or via in-game Settings):
 
-Приятной игры! 🔥🎯
+- `DEFAULT_WIDTH` / `DEFAULT_HEIGHT` — starting window size.
+- `BOARD_PANEL_RATIO` — portion of the screen occupied by the dartboard (default 0.42).
+- `MODE_INFO[...]["rounds"]` — number of rounds per mode.
+- UI/board themes — see `UI_THEMES` and `BOARD_THEMES` dictionaries.
+
+## 🚀 Launch Scripts
+
+For convenience, launch scripts are included:
+
+- **Windows CMD**: `run.bat`
+- **Windows PowerShell**: `run.ps1`
+- **Linux/macOS**: `run.sh`
+
+They automatically activate the `.venv` if present, then run `app.py`. If no `.venv` is found, they print bilingual instructions (RU/EN) on how to create it.
+
+Enjoy the game! 🔥🎯
