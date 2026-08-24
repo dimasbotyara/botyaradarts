@@ -66,6 +66,11 @@ class Dartboard:
         # угол: 0 градусов — вверх (сектор 20), далее по часовой стрелке
         angle = math.degrees(math.atan2(dx, -dy))  # -180..180, 0 = вверх
         angle = (angle + 360) % 360
+
+        # ВАЖНО: мишень отрисована повёрнутой на -90°, чтобы сектор 6 был сверху.
+        # Поэтому при расчёте сектора добавляем +90° для компенсации поворота.
+        angle = (angle + 90) % 360
+
         # каждый сектор 18 градусов, сектор i начинается с (angle_offset)
         sector_index = int(((angle + 9) % 360) // 18)
         value = C.SECTOR_ORDER[sector_index]
@@ -117,6 +122,8 @@ class Dartboard:
         pygame.draw.circle(surf, C.BOARD_OUT, (cx, cy), int(R * C.R_DOUBLE_OUT) + 4)
 
         # сектора (single/triple/double чередуют cream/black и red/green)
+        # Здесь оставляем поворот -90°, чтобы сектор 6 был сверху (как на реальной
+        # мишени, которую прикрепили к стене).
         n = len(C.SECTOR_ORDER)
         for i, value in enumerate(C.SECTOR_ORDER):
             start_deg = -90 + i * 18 - 9  # -90 = верх, сектор центрирован на верх для i=0
@@ -126,9 +133,10 @@ class Dartboard:
         for frac in (C.R_TRIPLE_IN, C.R_TRIPLE_OUT, C.R_DOUBLE_IN, C.R_DOUBLE_OUT):
             pygame.draw.circle(surf, C.BOARD_WIRE, (cx, cy), int(R * frac), 1)
 
-        # бул
-        pygame.draw.circle(surf, C.BOARD_GREEN, (cx, cy), int(R * C.R_OUTER_BULL))
-        pygame.draw.circle(surf, C.BOARD_RED, (cx, cy), int(R * C.R_BULL))
+        # бул (центр)
+        # Внешний булл (25) на нашей мишени жёлтый, яблочко (50) — чёрный.
+        pygame.draw.circle(surf, C.BOARD_YELLOW, (cx, cy), int(R * C.R_OUTER_BULL))
+        pygame.draw.circle(surf, C.BOARD_BLACK, (cx, cy), int(R * C.R_BULL))
         pygame.draw.circle(surf, C.BOARD_WIRE, (cx, cy), int(R * C.R_OUTER_BULL), 1)
 
         # проволочные линии секторов
@@ -157,8 +165,11 @@ class Dartboard:
     def _draw_sector_wedge(self, surf, cx, cy, R, start_deg, span_deg, index):
         """Рисует один клин сектора с чередованием цветов по кольцам."""
         is_alt = index % 2 == 0
+        # Инверсия цветов по сравнению со стандартом:
+        # Чётные сектора (20, 12, ...) теперь кремовые, нечётные — чёрные.
         single_color = C.BOARD_CREAM if is_alt else C.BOARD_BLACK
-        special_color = C.BOARD_RED if is_alt else C.BOARD_GREEN
+        # Триплы/даблы: чётные сектора — жёлтые, нечётные — красные.
+        special_color = C.BOARD_YELLOW if is_alt else C.BOARD_RED
 
         rings = [
             (C.R_OUTER_BULL, C.R_TRIPLE_IN, single_color),

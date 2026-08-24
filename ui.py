@@ -163,50 +163,53 @@ def draw_player_panel(surface, rect, game, fonts):
     p = game.current_player
     pad = int(rect.height * 0.06)
 
-    # пульсирующее свечение вокруг панели текущего игрока — привлекает взгляд,
-    # особенно полезно с дивана перед телевизором
-    pulse = (math.sin(pygame.time.get_ticks() / 320.0) + 1) / 2  # 0..1
+    # пульсирующее свечение вокруг панели текущего игрока
+    pulse = (math.sin(pygame.time.get_ticks() / 320.0) + 1) / 2
     glow_alpha = int(50 + 90 * pulse)
     glow_pad = 8
     glow_surf = pygame.Surface((rect.width + glow_pad * 2, rect.height + glow_pad * 2), pygame.SRCALPHA)
     pygame.draw.rect(glow_surf, (*p.color, glow_alpha), glow_surf.get_rect(),
-                      width=4, border_radius=22)
+                     width=4, border_radius=22)
     surface.blit(glow_surf, (rect.left - glow_pad, rect.top - glow_pad))
 
     # цветная полоска-акцент игрока
     pygame.draw.rect(surface, p.color, (rect.left, rect.top, rect.width, 8),
-                      border_top_left_radius=16, border_top_right_radius=16)
+                     border_top_left_radius=16, border_top_right_radius=16)
 
+    # ─── ЛЕВАЯ КОЛОНКА ───────────────────────────────────────────────
+    left_x = rect.left + pad
+    left_w = int(rect.width * 0.58)  # 58% ширины
     y = rect.top + pad + 6
+
     label = emoji_render.rtext(fonts["small"], "🎯 ХОДИТ СЕЙЧАС", C.TEXT_DIM)
-    surface.blit(label, (rect.left + pad, y))
+    surface.blit(label, (left_x, y))
     y += label.get_height() + 4
 
     name_surf = fonts["huge"].render(p.name, True, p.color)
-    surface.blit(name_surf, (rect.left + pad, y))
+    surface.blit(name_surf, (left_x, y))
     y += name_surf.get_height() + int(pad * 0.4)
 
     if game.teams_mode:
         team_txt = fonts["small"].render(f"Команда {p.team + 1}", True, C.TEXT_DIM)
-        surface.blit(team_txt, (rect.left + pad, y))
+        surface.blit(team_txt, (left_x, y))
         y += team_txt.get_height() + 8
 
-    # общий счёт крупно
+    # общий счёт
     score_label = fonts["small"].render("ОБЩИЙ СЧЁТ", True, C.TEXT_DIM)
-    surface.blit(score_label, (rect.left + pad, y))
+    surface.blit(score_label, (left_x, y))
     y += score_label.get_height() + 2
     score_surf = fonts["score"].render(str(p.total_score), True, C.TEXT_MAIN)
-    surface.blit(score_surf, (rect.left + pad, y))
+    surface.blit(score_surf, (left_x, y))
     y += score_surf.get_height() + int(pad * 0.5)
 
-    # индикатор дротиков (кружки)
+    # индикатор дротиков
     thrown, total = game.darts_thrown_progress()
     dot_r = max(10, int(rect.height * 0.022))
     dot_gap = dot_r * 3
-    dx = rect.left + pad + dot_r
+    dx = left_x + dot_r
     dart_label = fonts["small"].render(
         f"ДРОТИКИ: осталось {p.darts_remaining} из {total}", True, C.TEXT_DIM)
-    surface.blit(dart_label, (rect.left + pad, y))
+    surface.blit(dart_label, (left_x, y))
     y += dart_label.get_height() + 10
     for i in range(total):
         filled = i < thrown
@@ -219,45 +222,75 @@ def draw_player_panel(surface, rect, game, fonts):
             pygame.draw.circle(surface, C.TEXT_MAIN, (cx, cy), dot_r, 2)
     y += dot_r * 2 + int(pad * 0.6)
 
-    # активные бонусы хода (если есть от улучшений)
+    # активные бонусы хода
     tags = []
     if p.turn_multiplier > 1.001:
         tags.append(f"×{p.turn_multiplier:.2g} очки")
     if p.miss_floor > p.perm_miss_floor:
         tags.append(f"промах = {p.miss_floor}")
+    if getattr(p, 'single_bonus', 0) > 0:
+        tags.append(f"сингл +{p.single_bonus}")
     if tags:
         tag_label = emoji_render.rtext(fonts["small"], "🔥 В ЭТОМ ХОДЕ: " + ", ".join(tags), C.ACCENT)
-        surface.blit(tag_label, (rect.left + pad, y))
+        surface.blit(tag_label, (left_x, y))
         y += tag_label.get_height() + 6
 
-    # постоянные (пассивные) бонусы — действуют до конца партии
-    perm_tags = []
-    if p.perm_multiplier > 1.001:
-        perm_tags.append(f"×{p.perm_multiplier:.2g} очки")
-    if p.perm_extra_darts:
-        perm_tags.append(f"+{p.perm_extra_darts} дротик/ход")
-    if p.perm_flat_per_turn:
-        perm_tags.append(f"+{p.perm_flat_per_turn} очков/ход")
-    if p.perm_miss_floor:
-        perm_tags.append(f"промах ≥ {p.perm_miss_floor}")
-    if p.perm_shield:
-        perm_tags.append(f"щит {int(p.perm_shield * 100)}%")
-    if perm_tags:
-        perm_label = emoji_render.rtext(fonts["small"], "♾️ НАВСЕГДА: " + ", ".join(perm_tags), C.ACCENT_2)
-        surface.blit(perm_label, (rect.left + pad, y))
-        y += perm_label.get_height() + 8
-
-    # очки за текущий раунд/ход
+    # очки за текущий ход (внизу левой колонки)
     round_label = fonts["medium"].render(f"Очки за этот ход: {p.current_round_points}",
                                           True, C.ACCENT_2)
-    surface.blit(round_label, (rect.left + pad, rect.bottom - round_label.get_height() - pad))
+    surface.blit(round_label, (left_x, rect.bottom - round_label.get_height() - pad))
 
-    # номер раунда справа сверху панели
+    # ─── ПРАВАЯ КОЛОНКА ──────────────────────────────────────────────
+    right_x = rect.left + int(rect.width * 0.62)
+    right_w = rect.right - right_x - pad
+    right_y = rect.top + pad + 6
+
+    # раунд и режим
     round_txt = fonts["medium"].render(f"Раунд {game.round_no}/{game.rounds_total}", True, C.TEXT_MAIN)
-    surface.blit(round_txt, round_txt.get_rect(topright=(rect.right - pad, rect.top + pad)))
-
+    surface.blit(round_txt, round_txt.get_rect(topright=(rect.right - pad, right_y)))
     mode_txt = fonts["small"].render(game.info["title"], True, C.TEXT_DIM)
-    surface.blit(mode_txt, mode_txt.get_rect(topright=(rect.right - pad, rect.top + pad + round_txt.get_height() + 2)))
+    surface.blit(mode_txt, mode_txt.get_rect(topright=(rect.right - pad, right_y + round_txt.get_height() + 2)))
+
+    right_y += round_txt.get_height() + mode_txt.get_height() + 14
+
+    # постоянные улучшения
+    perm_label = emoji_render.rtext(fonts["small"], "♾️ ПОСТОЯННЫЕ УЛУЧШЕНИЯ:", C.ACCENT_2)
+    surface.blit(perm_label, (right_x, right_y))
+    right_y += perm_label.get_height() + 6
+
+    perm_upgrades = [name for name, dur in p.upgrades_collected if dur == "permanent"]
+    if not perm_upgrades:
+        no_perm = fonts["tiny"].render("Пока нет", True, C.TEXT_DIM2)
+        surface.blit(no_perm, (right_x, right_y))
+    else:
+        # ограничиваем количество строк, чтобы влезало
+        available_height = rect.bottom - pad - right_y - 10
+        line_h = fonts["tiny"].get_height() + 3
+        max_lines = max(1, available_height // line_h)
+        if len(perm_upgrades) > max_lines:
+            # показываем последние max_lines, сверху добавляем многоточие
+            shown = perm_upgrades[-max_lines:]
+            dots = fonts["tiny"].render("…", True, C.TEXT_DIM2)
+            surface.blit(dots, (right_x, right_y))
+            right_y += dots.get_height() + 3
+        else:
+            shown = perm_upgrades
+        for name in shown:
+            bullet = emoji_render.rtext(fonts["tiny"], f"• {name}", C.TEXT_DIM)
+            surface.blit(bullet, (right_x + 6, right_y))
+            right_y += bullet.get_height() + 3
+
+    # временные эффекты этого хода
+    turn_effects = [name for name, dur in p.upgrades_collected if dur == "turn"]
+    if turn_effects:
+        right_y += 8
+        turn_label = emoji_render.rtext(fonts["small"], "⏳ В ЭТОМ ХОДЕ:", C.ACCENT)
+        surface.blit(turn_label, (right_x, right_y))
+        right_y += turn_label.get_height() + 4
+        for name in turn_effects[-3:]:  # показываем максимум 3 последних
+            bullet = emoji_render.rtext(fonts["tiny"], f"• {name}", C.ACCENT)
+            surface.blit(bullet, (right_x + 6, right_y))
+            right_y += bullet.get_height() + 3
 
 
 # ==========================================================================

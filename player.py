@@ -21,6 +21,7 @@ class Player:
         self.turn_multiplier = 1        # эффект улучшений: множитель очков за ход
         self.extra_darts_bonus = 0      # эффект улучшений: доп. дротики
         self.miss_floor = 0             # эффект улучшений: промах засчитывается как N очков
+        self.single_bonus = 0           # бонус к очкам за следующее попадание в сингл (одноразовый)
 
         # ПОСТОЯННЫЕ (пассивные) эффекты — действуют до конца всей партии,
         # накапливаются при выпадении улучшений с duration="permanent"
@@ -90,6 +91,7 @@ class Player:
             "turn_multiplier": self.turn_multiplier,
             "extra_darts_bonus": self.extra_darts_bonus,
             "miss_floor": self.miss_floor,
+            "single_bonus": self.single_bonus,   # новое поле
             "perm_multiplier": self.perm_multiplier,
             "perm_extra_darts": self.perm_extra_darts,
             "perm_flat_per_turn": self.perm_flat_per_turn,
@@ -117,6 +119,7 @@ class Player:
         self.turn_multiplier = snap["turn_multiplier"]
         self.extra_darts_bonus = snap["extra_darts_bonus"]
         self.miss_floor = snap.get("miss_floor", 0)
+        self.single_bonus = snap.get("single_bonus", 0)   # новое поле
         self.perm_multiplier = snap.get("perm_multiplier", 1.0)
         self.perm_extra_darts = snap.get("perm_extra_darts", 0)
         self.perm_flat_per_turn = snap.get("perm_flat_per_turn", 0)

@@ -81,6 +81,7 @@ class GameManager:
         p.darts_total_this_turn = p.darts_remaining
         p.turn_multiplier = p.perm_multiplier
         p.miss_floor = p.perm_miss_floor
+        p.single_bonus = 0              # сбрасываем бонус за сингл
         p.current_round_points = 0
         self.last_hits = []
 
@@ -173,6 +174,10 @@ class GameManager:
         points = hit.points
         if hit.ring == "miss" and p.miss_floor > 0:
             points = p.miss_floor
+        # применяем одноразовый бонус за сингл
+        if hit.ring == "single" and getattr(p, 'single_bonus', 0) > 0:
+            points += p.single_bonus
+            p.single_bonus = 0
         points = int(round(points * p.turn_multiplier))
 
         p.total_score += points

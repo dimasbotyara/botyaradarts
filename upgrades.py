@@ -144,6 +144,75 @@ def _fx_copy_best_round():
     return fn
 
 
+# === НОВЫЕ ЭФФЕКТЫ (добавлены) ===
+def _fx_flat_bonus_and_dart(bonus, darts):
+    """Сразу +bonus очков и +darts дротиков в этом ходе."""
+    def fn(game, player):
+        player.total_score += bonus
+        player.current_round_points += bonus
+        player.extra_darts_bonus += darts
+        player.darts_remaining += darts
+        game.floating_texts.append((f"+{bonus} и +{darts} дрот.", player))
+    return fn
+
+
+def _fx_bonus_for_single(n):
+    """Следующий бросок в сингл даст на n очков больше."""
+    def fn(game, player):
+        player.single_bonus = getattr(player, 'single_bonus', 0) + n
+    return fn
+
+
+def _fx_repeat_best_round():
+    """Повторить очки за свой лучший ход (минимум 20)."""
+    def fn(game, player):
+        bonus = max(player.best_round, 20)
+        player.total_score += bonus
+        player.current_round_points += bonus
+        game.floating_texts.append((f"+{bonus} (повтор)", player))
+    return fn
+
+
+def _fx_weaken_all_players(n):
+    """Все соперники теряют по n очков."""
+    def fn(game, player):
+        for target in game.players:
+            if target is player:
+                continue
+            loss = min(n, target.total_score)
+            target.total_score -= loss
+            game.floating_texts.append((f"-{loss}", target))
+    return fn
+
+
+def _fx_extra_dart_forever(n):
+    """+n дротиков каждый ход до конца игры (permanent)."""
+    def fn(game, player):
+        player.perm_extra_darts += n
+    return fn
+
+
+def _fx_flat_income_forever(n):
+    """+n очков дохода в начале каждого хода (permanent)."""
+    def fn(game, player):
+        player.perm_flat_per_turn += n
+    return fn
+
+
+def _fx_shield_forever(amount):
+    """+amount% щита навсегда (permanent)."""
+    def fn(game, player):
+        player.perm_shield = min(0.9, player.perm_shield + amount)
+    return fn
+
+
+def _fx_multiplier_turn(mult):
+    """Множитель очков только на этот ход."""
+    def fn(game, player):
+        player.turn_multiplier *= mult
+    return fn
+
+
 # ==========================================================================
 # ЭФФЕКТЫ "НАВСЕГДА" (до конца партии) — пассивно применяются в game.py
 # ==========================================================================
@@ -178,7 +247,7 @@ def _fx_perm_shield(amount):
 
 
 # ==========================================================================
-# КАТАЛОГ УЛУЧШЕНИЙ (30 штук: 10 на каждый уровень, примерно половина навсегда)
+# КАТАЛОГ УЛУЧШЕНИЙ (теперь 42 штуки)
 # ==========================================================================
 UPGRADES = [
     # ---------------------------------------------------------------
@@ -192,19 +261,27 @@ UPGRADES = [
             C.DANGER, _fx_weaken_leader(5)),
     Upgrade("t1_safety_net", "Страховка", "Промахи в этом ходе = 5 очков", 1, "turn",
             (120, 170, 255), _fx_miss_becomes(5)),
-    Upgrade("t1_pickpocket", "Мелкий саботаж", "Случайный соперник получит на 1 дротик меньше в свой ход", 1, "turn",
+    Upgrade("t1_pickpocket", "Мелкий саботаж", "Случайный соперник получит на 1 дротик меньше", 1, "turn",
             C.DANGER, _fx_sabotage_dart(1)),
     Upgrade("t1_echo", "Эхо удачи", "Сразу получи очки, равные твоему лучшему раунду (мин. 15)", 1, "turn",
             C.ACCENT_2, _fx_copy_best_round()),
-
     Upgrade("t1_steady_hand", "Твёрдая рука", "НАВСЕГДА: промахи = минимум 3 очка", 1, "permanent",
             (120, 170, 255), _fx_perm_miss_floor(3)),
     Upgrade("t1_warmup", "Разминка", "НАВСЕГДА: +2 очка в начале каждого хода", 1, "permanent",
             C.ACCENT_2, _fx_perm_flat_income(2)),
     Upgrade("t1_focus", "Концентрация", "НАВСЕГДА: очки +5% до конца партии", 1, "permanent",
             C.ACCENT, _fx_perm_multiplier(1.05)),
-    Upgrade("t1_thick_skin", "Толстая кожа", "НАВСЕГДА: -20% урона от краж и атак соперников", 1, "permanent",
+    Upgrade("t1_thick_skin", "Толстая кожа", "НАВСЕГДА: -20% урона от краж и атак", 1, "permanent",
             (150, 200, 255), _fx_perm_shield(0.20)),
+    # Новые T1
+    Upgrade("t1_precision", "Точный прицел", "Следующий сингл даст +5 очков", 1, "turn",
+            (150, 200, 255), _fx_bonus_for_single(5)),
+    Upgrade("t1_quick_start", "Быстрый старт", "Сразу +3 очка и +1 дротик", 1, "turn",
+            C.SUCCESS, _fx_flat_bonus_and_dart(3, 1)),
+    Upgrade("t1_penny", "Копейка", "НАВСЕГДА: +1 очко дохода в начале хода", 1, "permanent",
+            C.ACCENT_2, _fx_flat_income_forever(1)),
+    Upgrade("t1_light_shield", "Лёгкий щит", "НАВСЕГДА: +10% защиты от краж", 1, "permanent",
+            (150, 200, 255), _fx_shield_forever(0.10)),
 
     # ---------------------------------------------------------------
     # TIER 2 — середина игры, эффекты ощутимее
@@ -217,19 +294,27 @@ UPGRADES = [
             C.SUCCESS, _fx_extra_dart(2)),
     Upgrade("t2_mid_bonus", "Джекпот-мини", "Сразу +25 очков", 2, "turn",
             C.ACCENT_2, _fx_flat_bonus(25)),
-    Upgrade("t2_sabotage2", "Крупный саботаж", "Случайный соперник получит на 2 дротика меньше в свой ход", 2, "turn",
+    Upgrade("t2_sabotage2", "Крупный саботаж", "Случайный соперник получит на 2 дротика меньше", 2, "turn",
             C.DANGER, _fx_sabotage_dart(2)),
-    Upgrade("t2_double_darts", "Удвоение бросков", "Удвоить количество дротиков, оставшихся в этом ходе", 2, "turn",
+    Upgrade("t2_double_darts", "Удвоение бросков", "Удвоить количество дротиков в этом ходе", 2, "turn",
             C.SUCCESS, _fx_double_darts_this_turn()),
-
     Upgrade("t2_nerves", "Стальные нервы", "НАВСЕГДА: промахи = минимум 8 очков", 2, "permanent",
             (120, 170, 255), _fx_perm_miss_floor(8)),
     Upgrade("t2_mindset", "Постоянный настрой", "НАВСЕГДА: очки +12% до конца партии", 2, "permanent",
             C.ACCENT, _fx_perm_multiplier(1.12)),
     Upgrade("t2_coach", "Личный тренер", "НАВСЕГДА: +5 очков в начале каждого хода", 2, "permanent",
             C.ACCENT_2, _fx_perm_flat_income(5)),
-    Upgrade("t2_shield", "Щит", "НАВСЕГДА: -50% урона от краж и атак соперников", 2, "permanent",
+    Upgrade("t2_shield", "Щит", "НАВСЕГДА: -50% урона от краж и атак", 2, "permanent",
             (150, 200, 255), _fx_perm_shield(0.30)),
+    # Новые T2
+    Upgrade("t2_repeat", "Повтор", "Повторить очки за свой лучший ход (мин. 20)", 2, "turn",
+            C.ACCENT, _fx_repeat_best_round()),
+    Upgrade("t2_weaken_all", "Волна", "Все соперники теряют по 5 очков", 2, "turn",
+            C.DANGER, _fx_weaken_all_players(5)),
+    Upgrade("t2_income_boost", "Подъём", "НАВСЕГДА: +8 очков дохода в начале хода", 2, "permanent",
+            C.ACCENT_2, _fx_flat_income_forever(8)),
+    Upgrade("t2_double_shield", "Двойной щит", "НАВСЕГДА: +20% защиты от краж", 2, "permanent",
+            (150, 200, 255), _fx_shield_forever(0.20)),
 
     # ---------------------------------------------------------------
     # TIER 3 — лейт-гейм, самые мощные
@@ -244,17 +329,25 @@ UPGRADES = [
             C.DANGER, _fx_steal_from_leader(25)),
     Upgrade("t3_wreck", "Разгром рандома", "Случайный соперник теряет 15 очков", 3, "turn",
             C.DANGER, _fx_weaken_random_opponent(15)),
-    Upgrade("t3_double_darts2", "Двойная перезарядка", "Удвоить оставшиеся дротики в этом ходе", 3, "turn",
+    Upgrade("t3_double_darts2", "Двойная перезарядка", "Удвоить оставшиеся дротики", 3, "turn",
             C.SUCCESS, _fx_double_darts_this_turn()),
-
     Upgrade("t3_legend", "Легенда дартса", "НАВСЕГДА: очки +25% до конца партии", 3, "permanent",
             C.ACCENT, _fx_perm_multiplier(1.25)),
     Upgrade("t3_lifetime_income", "Пожизненный доход", "НАВСЕГДА: +10 очков в начале каждого хода", 3, "permanent",
             C.ACCENT_2, _fx_perm_flat_income(10)),
     Upgrade("t3_sniper_perm", "Снайпер", "НАВСЕГДА: промахи = минимум 15 очков", 3, "permanent",
             (120, 170, 255), _fx_perm_miss_floor(15)),
-    Upgrade("t3_extra_hand", "Третья рука", "НАВСЕГДА: +1 дротик каждый ход до конца партии", 3, "permanent",
+    Upgrade("t3_extra_hand", "Третья рука", "НАВСЕГДА: +1 дротик каждый ход", 3, "permanent",
             C.SUCCESS, _fx_perm_extra_dart(1)),
+    # Новые T3
+    Upgrade("t3_mega_mult", "Сверхмножитель", "Все очки этого хода x3.5", 3, "turn",
+            C.ACCENT, _fx_multiplier_turn(3.5)),
+    Upgrade("t3_mega_income", "Олигарх", "НАВСЕГДА: +20 очков дохода в начале хода", 3, "permanent",
+            C.ACCENT_2, _fx_flat_income_forever(20)),
+    Upgrade("t3_berserk", "Берсерк", "НАВСЕГДА: +2 дротика каждый ход", 3, "permanent",
+            C.SUCCESS, _fx_extra_dart_forever(2)),
+    Upgrade("t3_armageddon", "Армагеддон", "Все соперники теряют по 15 очков", 3, "turn",
+            C.DANGER, _fx_weaken_all_players(15)),
 ]
 
 UPGRADES_BY_TIER = {1: [u for u in UPGRADES if u.tier == 1],

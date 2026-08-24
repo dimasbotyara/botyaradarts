@@ -120,9 +120,11 @@ class App:
 
         right_x = board_w
         right_w = w - board_w - margin
-        player_panel = pygame.Rect(right_x, margin, right_w, int(h * 0.42))
+        # Увеличиваем высоту панели игрока, уменьшаем высоту таблицы счёта,
+        # чтобы всё помещалось и смотрелось сбалансированно.
+        player_panel = pygame.Rect(right_x, margin, right_w, int(h * 0.46))
         scoreboard = pygame.Rect(right_x, player_panel.bottom + margin,
-                                  right_w, int(h * 0.36))
+                                  right_w, int(h * 0.32))
         buttons_area = pygame.Rect(right_x, scoreboard.bottom + margin,
                                     right_w, h - scoreboard.bottom - margin * 2)
         return {"board": board_rect, "player_panel": player_panel,
