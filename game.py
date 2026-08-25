@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-game.py — «мозг» игры: очередность ходов, начисление очков, режимы,
-undo/skip, определение победителя. Не зависит от pygame напрямую —
-только хранит координаты попаданий и управляет состоянием.
+game.py — мозг игры: очередность ходов, начисление очков, режимы,
+undo/skip, определение победителя.
 """
 
 import config as C
@@ -18,6 +17,11 @@ class GameManager:
         self.teams_mode = self.info.get("teams", False)
         self.dartboard = dartboard
 
+        # Для режима улучшений можно задать своё количество раундов
+        if mode == C.MODE_UPGRADES and hasattr(C, 'custom_upgrade_rounds'):
+            self.rounds_total = C.custom_upgrade_rounds
+            self.info["rounds"] = C.custom_upgrade_rounds
+
         self.players = []
         for i, name in enumerate(player_names):
             team = team_of[i] if team_of else None
@@ -27,7 +31,7 @@ class GameManager:
             if mode == C.MODE_501:
                 p.remaining_score = 501
                 p.starting_score = 501
-                p.total_score = 501   # в UI будем показывать remaining_score
+                p.total_score = 501
             self.players.append(p)
 
         self.turn_order = self._build_turn_order()
@@ -38,18 +42,16 @@ class GameManager:
         self.winner_team = None
 
         self.undo_stack = []
-        self.last_hits = []          # [(pos, color), ...] точки текущего хода
-        self.floating_texts = []     # [(text, player), ...] для короткой анимации
+        self.last_hits = []
+        self.floating_texts = []
         self.awaiting_upgrade = False
 
         self._start_turn(first=True)
 
-    # ------------------------------------------------------------------
     def _build_turn_order(self):
         n = len(self.players)
         if not self.teams_mode:
             return list(range(n))
-        # интерлив команд: T0p0, T1p0, T0p1, T1p1, ...
         by_team = {}
         for i, p in enumerate(self.players):
             by_team.setdefault(p.team, []).append(i)
@@ -72,25 +74,53 @@ class GameManager:
             return C.darts_for_round(self.mode, self.round_no)
         return C.DARTS_PER_TURN_DEFAULT
 
-    # ------------------------------------------------------------------
     def _start_turn(self, first=False):
         p = self.current_player
+
+        # Проклятие
+        if p.turn_multiplier_penalty != 1.0:
+            p.turn_multiplier = p.perm_multiplier * p.turn_multiplier_penalty
+            p.turn_multiplier_penalty = 1.0
+        else:
+            p.turn_multiplier = p.perm_multiplier
+
+        # Невосприимчивость
+        if p.negative_effect_immune > 0:
+            p.negative_effect_immune -= 1
+
+        # Вампир: если в прошлый ход >60, даём +1 дротик
+        if p.vampire and p.pending_dart_bonus > 0:
+            p.extra_darts_bonus += p.pending_dart_bonus
+            p.pending_dart_bonus = 0
+
         base = self.darts_per_turn_base + p.perm_extra_darts + p.extra_darts_bonus - p.pending_dart_penalty
         p.darts_remaining = max(1, base)
         p.pending_dart_penalty = 0
         p.extra_darts_bonus = 0
         p.darts_total_this_turn = p.darts_remaining
-        p.turn_multiplier = p.perm_multiplier
         p.miss_floor = p.perm_miss_floor
         p.single_bonus = 0
+        p.snowball_step = 0
+        p.first_throw_doubled = False
+        p.mirror_shield = False
+        p.kamikaze = False
+        p.clone = False
+        p.gravity = False
         p.current_round_points = 0
         self.last_hits = []
 
-        # пассивный доход очков (только для обычных режимов, не для 501)
+        # Пассивный доход
         if p.perm_flat_per_turn and self.mode != C.MODE_501:
             p.total_score += p.perm_flat_per_turn
             p.current_round_points += p.perm_flat_per_turn
             self.floating_texts.append((f"+{p.perm_flat_per_turn}", p))
+
+        # Золотая лихорадка: если в прошлый ход было >50, +5 сейчас
+        if p.gold_rush and p.last_turn_above_50:
+            p.total_score += 5
+            p.current_round_points += 5
+            self.floating_texts.append(("+5 золото", p))
+            p.last_turn_above_50 = False
 
         if self.mode == C.MODE_UPGRADES:
             self.awaiting_upgrade = True
@@ -121,7 +151,6 @@ class GameManager:
         p.darts_total_this_turn = p.darts_remaining
         self.awaiting_upgrade = False
 
-    # ------------------------------------------------------------------
     def snapshot(self):
         return {
             "players": [p.snapshot() for p in self.players],
@@ -154,7 +183,6 @@ class GameManager:
         self.winner_players = []
         self.winner_team = None
 
-    # ------------------------------------------------------------------
     def throw(self, pos):
         if self.game_over or self.awaiting_upgrade or not self.dartboard:
             return None
@@ -170,18 +198,42 @@ class GameManager:
         elif self.mode == C.MODE_501:
             self._handle_501_throw(p, hit, pos)
         else:
-            points = hit.points
-            if hit.ring == "miss" and p.miss_floor > 0:
-                points = p.miss_floor
-            if hit.ring == "single" and p.single_bonus > 0:
-                points += p.single_bonus
-                p.single_bonus = 0
-            points = int(round(points * p.turn_multiplier))
+            points = self._calculate_points(p, hit)
             p.total_score += points
             p.current_round_points += points
             p.register_throw(points, hit.ring)
             p.darts_remaining -= 1
             self.last_hits.append((pos, p.color))
+
+            # Двойной удар (первый бросок дублируется)
+            if p.first_throw_doubled and p.throws_count == 1:
+                p.total_score += points
+                p.current_round_points += points
+                p.register_throw(points, hit.ring)
+                self.floating_texts.append(("Дубль!", p))
+                p.first_throw_doubled = False
+
+            # Камикадзе: промах = соперники теряют по 3
+            if p.kamikaze and hit.ring == "miss":
+                for target in self.players:
+                    if target is not p:
+                        loss = min(3, target.total_score)
+                        target.total_score -= loss
+                        self.floating_texts.append((f"-{loss}", target))
+                p.kamikaze = False
+
+            # Снежный ком: каждый следующий дротик +5%
+            if p.snowball:
+                p.snowball_step += 1
+                if p.snowball_step > 1:
+                    p.turn_multiplier *= 1.05
+
+            # Коллекционер: +3 очка за каждый бросок
+            if p.collector > 0:
+                p.total_score += p.collector
+                p.current_round_points += p.collector
+                self.floating_texts.append((f"+{p.collector}", p))
+
             if points != hit.points:
                 self.floating_texts.append((f"+{points}", p))
 
@@ -189,6 +241,19 @@ class GameManager:
             self._end_turn()
 
         return hit
+
+    def _calculate_points(self, p, hit):
+        """Возвращает очки за бросок с учётом всех множителей."""
+        points = hit.points
+        if hit.ring == "miss" and p.miss_floor > 0:
+            points = p.miss_floor
+        if hit.ring == "single" and p.single_bonus > 0:
+            points += p.single_bonus
+            p.single_bonus = 0
+        if p.gravity and hit.ring == "single":
+            points = int(points * 1.6)
+        points = int(round(points * p.turn_multiplier))
+        return points
 
     def _handle_cricket_throw(self, player, hit, pos):
         value = hit.value
@@ -200,7 +265,6 @@ class GameManager:
             marks = 1 if ring == "outer_bull" else 2
             self._add_cricket_marks(player, 25, marks, hit.points)
         else:
-            # промах или незачётное число — без эффекта
             pass
 
         player.register_throw(hit.points, ring)
@@ -214,7 +278,6 @@ class GameManager:
                 player.cricket_marks[number] = 3
                 player.cricket_closed[number] = True
         else:
-            # число уже закрыто данным игроком — начисляем очки
             player.total_score += points
             player.current_round_points += points
             self.floating_texts.append((f"+{points}", player))
@@ -229,7 +292,6 @@ class GameManager:
 
         player.remaining_score -= points
         if player.remaining_score < 0:
-            # перебор — ход сгорает, отменяем вычитание
             player.remaining_score += points
             self.floating_texts.append(("Перебор!", player))
         elif player.remaining_score == 0:
@@ -243,7 +305,6 @@ class GameManager:
             player.darts_remaining -= 1
             self.last_hits.append((pos, player.color))
 
-        # Обновляем total_score для UI (показываем remaining)
         player.total_score = player.remaining_score
 
     def skip_turn(self):
@@ -256,6 +317,16 @@ class GameManager:
 
     def _end_turn(self):
         p = self.current_player
+        # Проверяем условия для золотой лихорадки и вампира
+        if p.current_round_points > 50:
+            p.last_turn_above_50 = True
+        else:
+            p.last_turn_above_50 = False
+        if p.vampire and p.current_round_points > 60:
+            p.pending_dart_bonus = 1
+        else:
+            p.pending_dart_bonus = 0
+
         p.finish_round()
         self.turn_pointer += 1
         if self.turn_pointer >= len(self.turn_order):
@@ -282,7 +353,6 @@ class GameManager:
             self.winner_team = [t for t, v in totals.items() if v == best]
             self.winner_players = [p for p in self.players if p.team in self.winner_team]
         elif self.mode == C.MODE_CRICKET:
-            # победитель: кто закрыл больше чисел, при равенстве больше очков
             best_closed = max(sum(p.cricket_closed.values()) for p in self.players)
             best_score = max(p.total_score for p in self.players
                              if sum(p.cricket_closed.values()) == best_closed)
@@ -299,7 +369,6 @@ class GameManager:
             best = max(p.total_score for p in self.players)
             self.winner_players = [p for p in self.players if p.total_score == best]
 
-    # ------------------------------------------------------------------
     def team_totals(self):
         totals = {}
         for p in self.players:

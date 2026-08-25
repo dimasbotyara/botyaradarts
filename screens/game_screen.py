@@ -4,14 +4,12 @@ import pygame
 import config as C
 import ui
 import emoji_render
-from upgrades import UpgradeSpinner
-from game import GameManager
 import stats_storage
+from upgrades import UpgradeSpinner
 
 class GameScreen:
     def __init__(self, app):
         self.app = app
-        self.buttons = {}
 
     def draw(self, surface):
         self.app._draw_background()
@@ -24,18 +22,19 @@ class GameScreen:
         if self.app.dartboard.rect.collidepoint(pygame.mouse.get_pos()) and not self.app.game.awaiting_upgrade:
             hover = pygame.mouse.get_pos()
         self.app.dartboard.draw(surface, hover_pos=hover, last_hits=self.app.game.last_hits)
-        self.app.fx.draw_board_layer(surface)
+        self.app.fx.draw_board_layer(surface)          # частицы + пульс-кольца поверх мишени
 
         ui.draw_player_panel(surface, layout["player_panel"], self.app.game, self.app.fonts)
         ui.draw_scoreboard(surface, layout["scoreboard"], self.app.game, self.app.fonts)
 
-        for b in self.buttons.values():
+        # Рисуем кнопки из app (они были созданы в _build_game_buttons)
+        for b in self.app.buttons.values():
             b.draw(surface)
-        self.app.fx.draw_ripples(surface)
+        self.app.fx.draw_ripples(surface)               # рябь от клика по кнопкам
 
         self.app._draw_floating_texts()
-        self.app.fx.draw_callouts(surface, self.app.fonts["large"])
-        self.app.fx.draw_flashes(surface)
+        self.app.fx.draw_callouts(surface, self.app.fonts["large"])  # "БУЛ!", "TRIPLE!" и т.д.
+        self.app.fx.draw_flashes(surface)                # вспышка экрана на крутых попаданиях
 
         if self.app.game.mode == C.MODE_UPGRADES and self.app.game.awaiting_upgrade:
             self._draw_upgrade_spinner(surface, layout)
@@ -81,7 +80,8 @@ class GameScreen:
                     self.app.spinner = None
                     self.app.spinner_hold_ms = 0
                 return True
-            for key, btn in self.buttons.items():
+            # Проверяем кнопки из app
+            for key, btn in self.app.buttons.items():
                 if btn.rect.collidepoint(pos):
                     self.app.fx.on_button_click(pos, C.ACCENT if key != "skip" else C.DANGER)
                     if key == "new_game":

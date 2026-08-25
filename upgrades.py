@@ -9,9 +9,6 @@ upgrades.py — режим "С улучшениями": определения �
   • duration           — "turn" (действует только в этом ходе) или
                           "permanent" (пассивный эффект до конца всей партии,
                           складывается с другими постоянными бонусами).
-
-Постоянные эффекты хранятся в самом Player (perm_*) и применяются
-автоматически в начале каждого хода в game.py — здесь только их выдача.
 """
 
 import random
@@ -109,7 +106,6 @@ def _fx_miss_becomes(n):
 
 
 def _fx_sabotage_dart(n):
-    """Случайный соперник получит на n дротиков меньше в свой следующий ход."""
     def fn(game, player):
         others = [p for p in game.players if p is not player and p.team != player.team]
         if not others:
@@ -135,7 +131,6 @@ def _fx_double_darts_this_turn():
 
 
 def _fx_copy_best_round():
-    """Мгновенно добавить очки, равные твоему же лучшему раунду за партию."""
     def fn(game, player):
         bonus = max(player.best_round, 15)
         player.total_score += bonus
@@ -144,7 +139,136 @@ def _fx_copy_best_round():
     return fn
 
 
-# === НОВЫЕ ЭФФЕКТЫ (добавлены) ===
+# === НОВЫЕ ЭФФЕКТЫ (16 штук) ===
+def _fx_earthquake():
+    """Все соперники теряют 10% от текущего счёта (минимум 5)."""
+    def fn(game, player):
+        for target in game.players:
+            if target is player:
+                continue
+            loss = max(5, int(target.total_score * 0.1))
+            loss = min(loss, target.total_score)
+            target.total_score -= loss
+            game.floating_texts.append((f"-{loss}", target))
+    return fn
+
+
+def _fx_curse():
+    """Следующий ход случайного соперника будет с множителем x0.5."""
+    def fn(game, player):
+        others = [p for p in game.players if p is not player]
+        if not others:
+            return
+        target = random.choice(others)
+        target.turn_multiplier_penalty = 0.5
+        game.floating_texts.append(("Проклят!", target))
+    return fn
+
+
+def _fx_steal_dart():
+    """Украсть 1 дротик у лидера."""
+    def fn(game, player):
+        others = [p for p in game.players if p is not player]
+        if not others:
+            return
+        leader = max(others, key=lambda p: p.total_score)
+        leader.pending_dart_penalty += 1
+        game.floating_texts.append(("-1 дрот.", leader))
+    return fn
+
+
+def _fx_double_first_throw():
+    """Первый бросок в этом ходе дублируется."""
+    def fn(game, player):
+        player.first_throw_doubled = True
+    return fn
+
+
+def _fx_mirror_shield():
+    """Если у игрока украдут очки, вор потеряет столько же."""
+    def fn(game, player):
+        player.mirror_shield = True
+    return fn
+
+
+def _fx_kamikaze():
+    """При промахе в этом ходе все соперники теряют по 3 очка."""
+    def fn(game, player):
+        player.kamikaze = True
+    return fn
+
+
+def _fx_immunity():
+    """Защита от негативных эффектов на 2 хода."""
+    def fn(game, player):
+        player.negative_effect_immune = 2
+    return fn
+
+
+def _fx_casino_risky():
+    """Множитель очков в этом ходе: 0.5, 1.5, 2 или 3."""
+    def fn(game, player):
+        mult = random.choice([0.5, 1.5, 2.0, 3.0])
+        player.turn_multiplier *= mult
+        game.floating_texts.append((f"x{mult} 🎰", player))
+    return fn
+
+
+def _fx_lottery():
+    """Все, кроме лидера, получают +20; если ты лидер — +15."""
+    def fn(game, player):
+        others = [p for p in game.players if p is not player]
+        leader = max(game.players, key=lambda p: p.total_score)
+        for p in game.players:
+            if p is player:
+                bonus = 15 if p is leader else 20
+                p.total_score += bonus
+                p.current_round_points += bonus
+                game.floating_texts.append((f"+{bonus}", p))
+            else:
+                bonus = 20
+                p.total_score += bonus
+                game.floating_texts.append((f"+{bonus}", p))
+    return fn
+
+
+def _fx_snowball():
+    """Постоянный: каждый следующий дротик в ходе даёт на 5% больше."""
+    def fn(game, player):
+        player.snowball = True
+    return fn
+
+
+def _fx_collector():
+    """Постоянный: +3 очка за каждый брошенный дротик."""
+    def fn(game, player):
+        player.collector += 3
+    return fn
+
+
+def _fx_gold_rush():
+    """Постоянный: если за ход >50 очков, в следующем ходе +5 пассивно."""
+    def fn(game, player):
+        player.gold_rush = True
+    return fn
+
+
+def _fx_vampire():
+    """Постоянный: если за ход >60 очков, восстанавливает 1 дротик в след. ходе."""
+    def fn(game, player):
+        player.vampire = True
+    return fn
+
+
+def _fx_clone():
+    """Клон: +1 дротик, но с половинным множителем."""
+    def fn(game, player):
+        player.clone = True
+        player.extra_darts_bonus += 1
+        player.darts_remaining += 1
+        player.turn_multiplier *= 0.5
+    return fn
+
 def _fx_flat_bonus_and_dart(bonus, darts):
     """Сразу +bonus очков и +darts дротиков в этом ходе."""
     def fn(game, player):
@@ -155,66 +279,15 @@ def _fx_flat_bonus_and_dart(bonus, darts):
         game.floating_texts.append((f"+{bonus} и +{darts} дрот.", player))
     return fn
 
-
-def _fx_bonus_for_single(n):
-    """Следующий бросок в сингл даст на n очков больше."""
+def _fx_gravity():
+    """Одиночные сектора в этом ходе дают x1.6."""
     def fn(game, player):
-        player.single_bonus = getattr(player, 'single_bonus', 0) + n
-    return fn
-
-
-def _fx_repeat_best_round():
-    """Повторить очки за свой лучший ход (минимум 20)."""
-    def fn(game, player):
-        bonus = max(player.best_round, 20)
-        player.total_score += bonus
-        player.current_round_points += bonus
-        game.floating_texts.append((f"+{bonus} (повтор)", player))
-    return fn
-
-
-def _fx_weaken_all_players(n):
-    """Все соперники теряют по n очков."""
-    def fn(game, player):
-        for target in game.players:
-            if target is player:
-                continue
-            loss = min(n, target.total_score)
-            target.total_score -= loss
-            game.floating_texts.append((f"-{loss}", target))
-    return fn
-
-
-def _fx_extra_dart_forever(n):
-    """+n дротиков каждый ход до конца игры (permanent)."""
-    def fn(game, player):
-        player.perm_extra_darts += n
-    return fn
-
-
-def _fx_flat_income_forever(n):
-    """+n очков дохода в начале каждого хода (permanent)."""
-    def fn(game, player):
-        player.perm_flat_per_turn += n
-    return fn
-
-
-def _fx_shield_forever(amount):
-    """+amount% щита навсегда (permanent)."""
-    def fn(game, player):
-        player.perm_shield = min(0.9, player.perm_shield + amount)
-    return fn
-
-
-def _fx_multiplier_turn(mult):
-    """Множитель очков только на этот ход."""
-    def fn(game, player):
-        player.turn_multiplier *= mult
+        player.gravity = True
     return fn
 
 
 # ==========================================================================
-# ЭФФЕКТЫ "НАВСЕГДА" (до конца партии) — пассивно применяются в game.py
+# ЭФФЕКТЫ "НАВСЕГДА"
 # ==========================================================================
 def _fx_perm_multiplier(factor):
     def fn(game, player):
@@ -245,14 +318,77 @@ def _fx_perm_shield(amount):
         player.perm_shield = min(0.9, player.perm_shield + amount)
     return fn
 
+def _fx_bonus_for_single(n):
+    """Следующий бросок в сингл даст на n очков больше."""
+    def fn(game, player):
+        player.single_bonus = getattr(player, 'single_bonus', 0) + n
+    return fn
+    
+def _fx_flat_bonus_and_dart(bonus, darts):
+    """Сразу +bonus очков и +darts дротиков в этом ходе."""
+    def fn(game, player):
+        player.total_score += bonus
+        player.current_round_points += bonus
+        player.extra_darts_bonus += darts
+        player.darts_remaining += darts
+        game.floating_texts.append((f"+{bonus} и +{darts} дрот.", player))
+    return fn
+
+
+def _fx_repeat_best_round():
+    """Повторить очки за свой лучший ход (минимум 20)."""
+    def fn(game, player):
+        bonus = max(player.best_round, 20)
+        player.total_score += bonus
+        player.current_round_points += bonus
+        game.floating_texts.append((f"+{bonus} (повтор)", player))
+    return fn
+
+
+def _fx_weaken_all_players(n):
+    """Все соперники теряют по n очков."""
+    def fn(game, player):
+        for target in game.players:
+            if target is player:
+                continue
+            loss = min(n, target.total_score)
+            target.total_score -= loss
+            game.floating_texts.append((f"-{loss}", target))
+    return fn
+
+
+def _fx_flat_income_forever(n):
+    """+n очков дохода в начале каждого хода (permanent)."""
+    def fn(game, player):
+        player.perm_flat_per_turn += n
+    return fn
+
+
+def _fx_shield_forever(amount):
+    """+amount% щита навсегда (permanent)."""
+    def fn(game, player):
+        player.perm_shield = min(0.9, player.perm_shield + amount)
+    return fn
+
+
+def _fx_multiplier_turn(mult):
+    """Множитель очков только на этот ход."""
+    def fn(game, player):
+        player.turn_multiplier *= mult
+    return fn
+
+
+def _fx_extra_dart_forever(n):
+    """+n дротиков каждый ход до конца игры (permanent)."""
+    def fn(game, player):
+        player.perm_extra_darts += n
+    return fn
 
 # ==========================================================================
-# КАТАЛОГ УЛУЧШЕНИЙ (теперь 42 штуки)
+# КАТАЛОГ УЛУЧШЕНИЙ (теперь 58 штук)
 # ==========================================================================
 UPGRADES = [
-    # ---------------------------------------------------------------
-    # TIER 1 — ранняя игра, лёгкие эффекты
-    # ---------------------------------------------------------------
+    # TIER 1 (существующие + новые)
     Upgrade("t1_extra_dart", "Доп. дротик", "Ещё +1 дротик в этом ходе", 1, "turn",
             C.SUCCESS, _fx_extra_dart(1)),
     Upgrade("t1_small_bonus", "Мелкая удача", "Сразу +10 очков", 1, "turn",
@@ -263,7 +399,7 @@ UPGRADES = [
             (120, 170, 255), _fx_miss_becomes(5)),
     Upgrade("t1_pickpocket", "Мелкий саботаж", "Случайный соперник получит на 1 дротик меньше", 1, "turn",
             C.DANGER, _fx_sabotage_dart(1)),
-    Upgrade("t1_echo", "Эхо удачи", "Сразу получи очки, равные твоему лучшему раунду (мин. 15)", 1, "turn",
+    Upgrade("t1_echo", "Эхо удачи", "Сразу получи очки, равные лучшему раунду (мин. 15)", 1, "turn",
             C.ACCENT_2, _fx_copy_best_round()),
     Upgrade("t1_steady_hand", "Твёрдая рука", "НАВСЕГДА: промахи = минимум 3 очка", 1, "permanent",
             (120, 170, 255), _fx_perm_miss_floor(3)),
@@ -273,7 +409,6 @@ UPGRADES = [
             C.ACCENT, _fx_perm_multiplier(1.05)),
     Upgrade("t1_thick_skin", "Толстая кожа", "НАВСЕГДА: -20% урона от краж и атак", 1, "permanent",
             (150, 200, 255), _fx_perm_shield(0.20)),
-    # Новые T1
     Upgrade("t1_precision", "Точный прицел", "Следующий сингл даст +5 очков", 1, "turn",
             (150, 200, 255), _fx_bonus_for_single(5)),
     Upgrade("t1_quick_start", "Быстрый старт", "Сразу +3 очка и +1 дротик", 1, "turn",
@@ -282,10 +417,14 @@ UPGRADES = [
             C.ACCENT_2, _fx_flat_income_forever(1)),
     Upgrade("t1_light_shield", "Лёгкий щит", "НАВСЕГДА: +10% защиты от краж", 1, "permanent",
             (150, 200, 255), _fx_shield_forever(0.10)),
+    Upgrade("t1_kamikaze", "Камикадзе", "При промахе в этом ходе все соперники теряют по 3 очка", 1, "turn",
+            C.DANGER, _fx_kamikaze()),
+    Upgrade("t1_lottery", "Лотерея", "Всем игрокам +20 (лидеру +15)", 1, "turn",
+            C.ACCENT_2, _fx_lottery()),
+    Upgrade("t1_collector", "Коллекционер", "НАВСЕГДА: +3 очка за каждый бросок", 1, "permanent",
+            C.ACCENT, _fx_collector()),
 
-    # ---------------------------------------------------------------
-    # TIER 2 — середина игры, эффекты ощутимее
-    # ---------------------------------------------------------------
+    # TIER 2
     Upgrade("t2_double_turn", "Двойной удар", "Все очки этого хода x2", 2, "turn",
             C.ACCENT, _fx_multiplier(2)),
     Upgrade("t2_steal", "Кража", "Забрать 10 очков у лидера", 2, "turn",
@@ -306,7 +445,6 @@ UPGRADES = [
             C.ACCENT_2, _fx_perm_flat_income(5)),
     Upgrade("t2_shield", "Щит", "НАВСЕГДА: -50% урона от краж и атак", 2, "permanent",
             (150, 200, 255), _fx_perm_shield(0.30)),
-    # Новые T2
     Upgrade("t2_repeat", "Повтор", "Повторить очки за свой лучший ход (мин. 20)", 2, "turn",
             C.ACCENT, _fx_repeat_best_round()),
     Upgrade("t2_weaken_all", "Волна", "Все соперники теряют по 5 очков", 2, "turn",
@@ -315,10 +453,20 @@ UPGRADES = [
             C.ACCENT_2, _fx_flat_income_forever(8)),
     Upgrade("t2_double_shield", "Двойной щит", "НАВСЕГДА: +20% защиты от краж", 2, "permanent",
             (150, 200, 255), _fx_shield_forever(0.20)),
+    Upgrade("t2_curse", "Проклятие", "Следующий ход случайного соперника будет с x0.5", 2, "turn",
+            C.DANGER, _fx_curse()),
+    Upgrade("t2_steal_dart", "Кража дротика", "Украсть 1 дротик у лидера", 2, "turn",
+            C.DANGER, _fx_steal_dart()),
+    Upgrade("t2_double_first", "Двойной удар", "Первый бросок в этом ходе дублируется", 2, "turn",
+            C.ACCENT, _fx_double_first_throw()),
+    Upgrade("t2_mirror", "Зеркальный щит", "Если у тебя украдут очки, вор потеряет столько же", 2, "turn",
+            (150, 200, 255), _fx_mirror_shield()),
+    Upgrade("t2_immunity", "Невосприимчивость", "Защита от негативных эффектов на 2 хода", 2, "turn",
+            C.SUCCESS, _fx_immunity()),
+    Upgrade("t2_gravity", "Гравитация", "Синглы в этом ходе дают x1.6", 2, "turn",
+            C.ACCENT_2, _fx_gravity()),
 
-    # ---------------------------------------------------------------
-    # TIER 3 — лейт-гейм, самые мощные
-    # ---------------------------------------------------------------
+    # TIER 3
     Upgrade("t3_triple_turn", "Тройной удар", "Все очки этого хода x3!", 3, "turn",
             C.ACCENT, _fx_multiplier(3)),
     Upgrade("t3_jackpot", "ДЖЕКПОТ", "Сразу +40 очков!", 3, "turn",
@@ -335,11 +483,10 @@ UPGRADES = [
             C.ACCENT, _fx_perm_multiplier(1.25)),
     Upgrade("t3_lifetime_income", "Пожизненный доход", "НАВСЕГДА: +10 очков в начале каждого хода", 3, "permanent",
             C.ACCENT_2, _fx_perm_flat_income(10)),
-    Upgrade("t3_sniper_perm", "Снайпер", "НАВСЕГДА: промахи = минимум 15 очков", 3, "permanent",
-            (120, 170, 255), _fx_perm_miss_floor(15)),
+    Upgrade("t3_sniper_perm", "Снайпер", "НАВСЕГДА: промахи = минимум 10 очков", 3, "permanent",
+            (120, 170, 255), _fx_perm_miss_floor(10)),
     Upgrade("t3_extra_hand", "Третья рука", "НАВСЕГДА: +1 дротик каждый ход", 3, "permanent",
             C.SUCCESS, _fx_perm_extra_dart(1)),
-    # Новые T3
     Upgrade("t3_mega_mult", "Сверхмножитель", "Все очки этого хода x3.5", 3, "turn",
             C.ACCENT, _fx_multiplier_turn(3.5)),
     Upgrade("t3_mega_income", "Олигарх", "НАВСЕГДА: +20 очков дохода в начале хода", 3, "permanent",
@@ -348,6 +495,18 @@ UPGRADES = [
             C.SUCCESS, _fx_extra_dart_forever(2)),
     Upgrade("t3_armageddon", "Армагеддон", "Все соперники теряют по 15 очков", 3, "turn",
             C.DANGER, _fx_weaken_all_players(15)),
+    Upgrade("t3_earthquake", "Землетрясение", "Все соперники теряют 10% счёта (мин. 5)", 3, "turn",
+            C.DANGER, _fx_earthquake()),
+    Upgrade("t3_casino", "Казино", "Множитель очков в этом ходе: 0.5, 1.5, 2 или 3", 3, "turn",
+            C.ACCENT, _fx_casino_risky()),
+    Upgrade("t3_snowball", "Снежный ком", "НАВСЕГДА: каждый следующий дротик в ходе даёт на 5% больше", 3, "permanent",
+            C.ACCENT, _fx_snowball()),
+    Upgrade("t3_gold_rush", "Золотая лихорадка", "НАВСЕГДА: если ход >50 очков, след. ход +5 пассивно", 3, "permanent",
+            C.ACCENT_2, _fx_gold_rush()),
+    Upgrade("t3_vampire", "Вампир", "НАВСЕГДА: если ход >60 очков, восстанавливает 1 дротик", 3, "permanent",
+            C.DANGER, _fx_vampire()),
+    Upgrade("t3_clone", "Клон", "+1 дротик, но множитель x0.5", 3, "turn",
+            C.SUCCESS, _fx_clone()),
 ]
 
 UPGRADES_BY_TIER = {1: [u for u in UPGRADES if u.tier == 1],
@@ -360,12 +519,7 @@ DURATION_COLOR = {"turn": C.TEXT_DIM, "permanent": C.ACCENT}
 
 
 def roll_upgrade(round_no, total_rounds):
-    """
-    Возвращает случайное улучшение. Веса тиров смещаются в сторону
-    старших уровней по мере роста номера раунда.
-    """
     progress = 0.0 if total_rounds <= 1 else (round_no - 1) / (total_rounds - 1)
-    # веса [tier1, tier2, tier3] линейно смещаются от (70,25,5) к (10,35,55)
     w1 = 70 - 60 * progress
     w2 = 25 + 10 * progress
     w3 = 5 + 50 * progress
@@ -374,11 +528,6 @@ def roll_upgrade(round_no, total_rounds):
 
 
 class UpgradeSpinner:
-    """
-    Анимация слот-машины: быстрая прокрутка карточек улучшений,
-    плавное замедление и остановка на выбранном улучшении.
-    """
-
     DURATION_MS = 2200
     CARD_H = 106
     CARD_GAP = 14
@@ -388,7 +537,6 @@ class UpgradeSpinner:
         self.on_done = on_done
         self.start_ticks = pygame.time.get_ticks()
         self.done = False
-        # лента карточек: случайные + результат в конце
         reel = [random.choice(UPGRADES) for _ in range(22)]
         reel.append(result_upgrade)
         self.reel = reel
@@ -417,14 +565,12 @@ class UpgradeSpinner:
 
         n = len(self.reel)
         total_h = n * (self.CARD_H + self.CARD_GAP)
-        # финальное смещение — чтобы последняя карточка (result) была по центру окна
         final_offset = total_h - (self.CARD_H + self.CARD_GAP) * 0.5 - center_rect.height / 2
         offset = eased * final_offset
 
         clip = surface.get_clip()
         surface.set_clip(center_rect)
 
-        # фон панели
         pygame.draw.rect(surface, C.PANEL_BG, center_rect, border_radius=18)
         pygame.draw.rect(surface, C.ACCENT, center_rect, 3, border_radius=18)
 
@@ -436,7 +582,6 @@ class UpgradeSpinner:
                 self._draw_card(surface, card_rect, card, font_title, font_desc, font_tag)
             y += self.CARD_H + self.CARD_GAP
 
-        # затемняющая рамка сверху/снизу для эффекта "окна"
         fade_h = 60
         top_fade = pygame.Surface((center_rect.width, fade_h), pygame.SRCALPHA)
         top_fade.fill((*C.PANEL_BG, 235))
@@ -445,7 +590,6 @@ class UpgradeSpinner:
         bottom_fade.fill((*C.PANEL_BG, 235))
         surface.blit(bottom_fade, (center_rect.left, center_rect.bottom - fade_h))
 
-        # индикатор-указатель по центру
         mid_y = center_rect.centery
         pygame.draw.polygon(surface, C.ACCENT, [
             (center_rect.left - 4, mid_y - 14),
